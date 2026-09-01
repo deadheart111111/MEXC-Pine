@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Structure v2.39</title>
+<title>Structure v2.40</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Structure v2.39</h1>
+<h1>Structure v2.40</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Structure – Fib v2.39&quot;, overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
+indicator(&quot;MEXC Structure – Fib v2.40&quot;, overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
 
 // ══════════════════════════════════════════════════════════════
 // الإعدادات
@@ -1040,14 +1040,42 @@ peakLive = legOk and ((isLongFib and hiOff &gt;= -2) or (isShortFib and loOff &g
 peakHold = atEnd and not peakLive
 
 holdNeed = timeframe.in_seconds() &gt;= 900 ? 1 : 3
+flipNeed = timeframe.in_seconds() &gt;= 900 ? 2 : 3
 weakLong  = lostStart or isShortFib
 weakShort = lostStart or isLongFib
+mxLive = mxEntry &gt; 0 and mxCont &gt; 0
+mxLiveLong = mxLive and mxSide == &quot;شراء&quot;
+mxLiveShort = mxLive and mxSide == &quot;بيع&quot;
+closedOk = barstate.isconfirmed
 
 var string rec = &quot;انتظار&quot;
 var int hold = 0
-if raw == &quot;شراء&quot; or raw == &quot;بيع&quot;
-    rec := raw
-    hold := 0
+oppBuy  = rec == &quot;بيع&quot;  and raw == &quot;شراء&quot; and scoreB &gt;= scoreS + flipNeed and closedOk
+oppSell = rec == &quot;شراء&quot; and raw == &quot;بيع&quot;  and scoreS &gt;= scoreB + flipNeed and closedOk
+blockedFlip = false
+if mxLiveLong and raw == &quot;بيع&quot;
+    blockedFlip := true
+    if weakLong
+        rec := &quot;انتظار&quot;
+        hold := 0
+    else if rec != &quot;شراء&quot;
+        rec := &quot;شراء&quot;
+        hold := 0
+else if mxLiveShort and raw == &quot;شراء&quot;
+    blockedFlip := true
+    if weakShort
+        rec := &quot;انتظار&quot;
+        hold := 0
+    else if rec != &quot;بيع&quot;
+        rec := &quot;بيع&quot;
+        hold := 0
+else if raw == &quot;شراء&quot; or raw == &quot;بيع&quot;
+    if rec == &quot;انتظار&quot; or rec == raw
+        rec := raw
+        hold := 0
+    else if oppBuy or oppSell
+        rec := raw
+        hold := 0
 else
     exiting = (rec == &quot;شراء&quot; and weakLong) or (rec == &quot;بيع&quot; and weakShort)
     if exiting
@@ -1096,7 +1124,13 @@ else if legOk
 
 mxPosLong = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;شراء&quot;
 mxPosShort = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;بيع&quot;
-if mxPosLong and rec == &quot;بيع&quot;
+if blockedFlip and rec != &quot;انتظار&quot;
+    advice := &quot;لا تعكس | صفقتك قائمة — الخروج فقط عند ضعف&quot;
+    adviceCol := color.orange
+else if blockedFlip and rec == &quot;انتظار&quot;
+    advice := &quot;اخرج فقط | ممنوع فتح العكس&quot;
+    adviceCol := color.orange
+else if mxPosLong and rec == &quot;بيع&quot;
     advice := pinHi ? &quot;لونج ضد الموجة | نجم رفض — لا تضيف، جني الارتداد&quot; : pinLo or sweepLo ? &quot;مطرقة تدعم لونجك | جني عند الرفض — لا زيادة&quot; : &quot;لونج ضد الموجة | الارتداد للخروج&quot;
     adviceCol := color.orange
 else if mxPosShort and rec == &quot;شراء&quot;
@@ -1249,7 +1283,7 @@ var table t = table.new(position.top_right, 2, 19, border_width=1)
 
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 18)
-    table.cell(t, 0, 0, &quot;MEXC Structure v2.39&quot;, bgcolor=color.blue, text_color=color.white, text_size=tblSz)
+    table.cell(t, 0, 0, &quot;MEXC Structure v2.40&quot;, bgcolor=color.blue, text_color=color.white, text_size=tblSz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=tblSz)
     table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=tblSz)
     table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=tblSz)
