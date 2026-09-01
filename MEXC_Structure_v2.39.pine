@@ -807,9 +807,9 @@ else if bounceTlS
     zoneCol := color.red
 
 atrW = nz(atr, close * 0.01)
-cb1 = f_cBody(1)
-cb2 = f_cBody(2)
-cb3 = f_cBody(3)
+cBd1 = f_cBody(1)
+cBd2 = f_cBody(2)
+cBd3 = f_cBody(3)
 r1 = f_cRng(1)
 wd1 = f_cWd(1)
 wu1 = f_cWu(1)
@@ -822,30 +822,30 @@ bull2 = close[2] > open[2]
 bear2 = close[2] < open[2]
 bull3 = close[3] > open[3]
 bear3 = close[3] < open[3]
-mornStar = bear3 and cb2 <= cb3 * 0.55 and bull1 and close[1] > (open[3] + close[3]) * 0.5 and low[2] < math.min(low[3], low[1])
-evenStar = bull3 and cb2 <= cb3 * 0.55 and bear1 and close[1] < (open[3] + close[3]) * 0.5 and high[2] > math.max(high[3], high[1])
-soldiers = bull1 and bull2 and bull3 and close[1] > close[2] and close[2] > close[3] and wu1 < cb1 * 0.5 and wu2 < cb2 * 0.5 and cb1 >= atrW * 0.22
-crows = bear1 and bear2 and bear3 and close[1] < close[2] and close[2] < close[3] and wd1 < cb1 * 0.5 and wd2 < cb2 * 0.5 and cb1 >= atrW * 0.22
-bullEngC = bull1 and bear2 and close[1] >= open[2] and open[1] <= close[2] and cb1 > cb2
-bearEngC = bear1 and bull2 and close[1] <= open[2] and open[1] >= close[2] and cb1 > cb2
+mornStar = bear3 and cBd2 <= cBd3 * 0.55 and bull1 and close[1] > (open[3] + close[3]) * 0.5 and low[2] < math.min(low[3], low[1])
+evenStar = bull3 and cBd2 <= cBd3 * 0.55 and bear1 and close[1] < (open[3] + close[3]) * 0.5 and high[2] > math.max(high[3], high[1])
+soldiers = bull1 and bull2 and bull3 and close[1] > close[2] and close[2] > close[3] and wu1 < cBd1 * 0.5 and wu2 < cBd2 * 0.5 and cBd1 >= atrW * 0.22
+crows = bear1 and bear2 and bear3 and close[1] < close[2] and close[2] < close[3] and wd1 < cBd1 * 0.5 and wd2 < cBd2 * 0.5 and cBd1 >= atrW * 0.22
+bullEngC = bull1 and bear2 and close[1] >= open[2] and open[1] <= close[2] and cBd1 > cBd2
+bearEngC = bear1 and bull2 and close[1] <= open[2] and open[1] >= close[2] and cBd1 > cBd2
 pierce = bear2 and bull1 and open[1] <= low[2] and close[1] > (open[2] + close[2]) * 0.5 and close[1] < open[2]
 darkC = bull2 and bear1 and open[1] >= high[2] and close[1] < (open[2] + close[2]) * 0.5 and close[1] > open[2]
 twzBot = math.abs(low[1] - low[2]) <= atrW * 0.12 and wd1 >= atrW * 0.22 and wd2 >= atrW * 0.16
 twzTop = math.abs(high[1] - high[2]) <= atrW * 0.12 and wu1 >= atrW * 0.22 and wu2 >= atrW * 0.16
-harB = bear2 and bull1 and high[1] < high[2] and low[1] > low[2] and cb1 < cb2 * 0.75
-harS = bull2 and bear1 and high[1] < high[2] and low[1] > low[2] and cb1 < cb2 * 0.75
+harB = bear2 and bull1 and high[1] < high[2] and low[1] > low[2] and cBd1 < cBd2 * 0.75
+harS = bull2 and bear1 and high[1] < high[2] and low[1] > low[2] and cBd1 < cBd2 * 0.75
 insideBar = high[1] < high[2] and low[1] > low[2] and not harB and not harS
-hammer1 = wd1 >= cb1 * 1.7 and wd1 >= atrW * 0.40 and wu1 <= cb1 * 0.7 and pos1 >= 0.55
-star1 = wu1 >= cb1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= cb1 * 0.7 and pos1 <= 0.45
+hammer1 = wd1 >= cBd1 * 1.7 and wd1 >= atrW * 0.40 and wu1 <= cBd1 * 0.7 and pos1 >= 0.55
+star1 = wu1 >= cBd1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= cBd1 * 0.7 and pos1 <= 0.45
 hangMan = hammer1 and isLongFib
-invHam = wu1 >= cb1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= cb1 * 0.6 and pos1 >= 0.45 and isShortFib and not star1
-doji1 = cb1 <= r1 * 0.28 and r1 >= atrW * 0.45
+invHam = wu1 >= cBd1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= cBd1 * 0.6 and pos1 >= 0.45 and isShortFib and not star1
+doji1 = cBd1 <= r1 * 0.28 and r1 >= atrW * 0.45
 dragDoji = doji1 and wd1 >= r1 * 0.58 and wu1 <= r1 * 0.14
 gravDoji = doji1 and wu1 >= r1 * 0.58 and wd1 <= r1 * 0.14
 longDoji = doji1 and wd1 >= r1 * 0.28 and wu1 >= r1 * 0.28
-spinTop = cb1 <= r1 * 0.40 and wd1 >= cb1 * 0.5 and wu1 >= cb1 * 0.5 and r1 >= atrW * 0.35 and not doji1
-maruUp = bull1 and cb1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
-maruDn = bear1 and cb1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
+spinTop = cBd1 <= r1 * 0.40 and wd1 >= cBd1 * 0.5 and wu1 >= cBd1 * 0.5 and r1 >= atrW * 0.35 and not doji1
+maruUp = bull1 and cBd1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
+maruDn = bear1 and cBd1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
 sweepLo = not na(lastL) and low[1] < lastL and close[1] > lastL
 sweepHi = not na(lastH) and high[1] > lastH and close[1] < lastH
 atAv1 = not na(avwap[1]) and low[1] <= avwap[1] and high[1] >= avwap[1]
