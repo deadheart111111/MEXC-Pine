@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Flow v7.24</title>
+<title>Flow v7.25</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Flow v7.24</h1>
+<h1>Flow v7.25</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Flow – 5m/15m v7.24&quot;, overlay=true, max_lines_count=15)
+indicator(&quot;MEXC Flow – 5m/15m v7.25&quot;, overlay=true, max_lines_count=15)
 
 // ══════════════════════════════════════════════════════════════
 // الإعدادات  (كما هي)
@@ -1066,21 +1066,36 @@ if scoreB &gt;= 5 and scoreB &gt; scoreS + 1
 else if scoreS &gt;= 5 and scoreS &gt; scoreB + 1
     raw := &quot;بيع&quot;
 
-holdNeed = timeframe.in_seconds() &gt;= 900 ? 1 : 3
-flipNeed = timeframe.in_seconds() &gt;= 900 ? 2 : 3
-weakLong  = not aboveFast or emaDn
-weakShort = aboveFast or emaUp
+isFastTF = timeframe.in_seconds() &lt; 900
+holdNeed = isFastTF ? 3 : 1
+flipNeed = isFastTF ? 4 : 2
+weakLong  = isFastTF ? (emaDn and not aboveSlow) : (not aboveFast or emaDn)
+weakShort = isFastTF ? (emaUp and aboveSlow) : (aboveFast or emaUp)
 mxLive = mxEntry &gt; 0 and mxCont &gt; 0
 mxLiveLong = mxLive and mxSide == &quot;شراء&quot;
 mxLiveShort = mxLive and mxSide == &quot;بيع&quot;
 closedOk = barstate.isconfirmed
+biasLong = htfUp
+ctrTrend = (raw == &quot;شراء&quot; and not biasLong) or (raw == &quot;بيع&quot; and biasLong)
+blowCtr = (raw == &quot;شراء&quot; and scoreB &gt;= scoreS + 4 and flowLong and aboveFast) or (raw == &quot;بيع&quot; and scoreS &gt;= scoreB + 4 and flowShort and not aboveFast)
+blockedCtr = false
+if isFastTF and ctrTrend and not blowCtr
+    raw := &quot;انتظار&quot;
+    blockedCtr := true
 
 var bool lockedBE = false
 var string rec = &quot;انتظار&quot;
 var int hold = 0
-oppBuy  = rec == &quot;بيع&quot;  and raw == &quot;شراء&quot; and scoreB &gt;= scoreS + flipNeed and closedOk
-oppSell = rec == &quot;شراء&quot; and raw == &quot;بيع&quot;  and scoreS &gt;= scoreB + flipNeed and closedOk
-blockedFlip = false
+var string lastSide = &quot;انتظار&quot;
+var int waitBars = 0
+var int sideBars = 0
+oppBuy  = rec == &quot;بيع&quot;  and raw == &quot;شراء&quot; and scoreB &gt;= scoreS + flipNeed and closedOk and not isFastTF
+oppSell = rec == &quot;شراء&quot; and raw == &quot;بيع&quot;  and scoreS &gt;= scoreB + flipNeed and closedOk and not isFastTF
+sameAsLast = raw == lastSide
+oppAsLast = (raw == &quot;شراء&quot; and lastSide == &quot;بيع&quot;) or (raw == &quot;بيع&quot; and lastSide == &quot;شراء&quot;)
+htfOk = (raw == &quot;شراء&quot; and biasLong) or (raw == &quot;بيع&quot; and not biasLong)
+waitGate = lastSide == &quot;انتظار&quot; or sameAsLast or (waitBars &gt;= (isFastTF ? 2 : 1) and closedOk and (htfOk or blowCtr))
+blockedFlip = blockedCtr
 if mxLiveLong and raw == &quot;بيع&quot;
     blockedFlip := true
     if weakLong and not lockedBE
@@ -1098,12 +1113,20 @@ else if mxLiveShort and raw == &quot;شراء&quot;
         rec := &quot;بيع&quot;
         hold := 0
 else if raw == &quot;شراء&quot; or raw == &quot;بيع&quot;
-    if rec == &quot;انتظار&quot; or rec == raw
+    if rec == raw
         rec := raw
         hold := 0
+    else if rec == &quot;انتظار&quot;
+        if waitGate
+            rec := raw
+            hold := 0
+        else
+            blockedFlip := true
     else if oppBuy or oppSell
         rec := raw
         hold := 0
+    else
+        blockedFlip := true
 else
     exiting = (rec == &quot;شراء&quot; and weakLong) or (rec == &quot;بيع&quot; and weakShort)
     if exiting and not lockedBE
@@ -1113,6 +1136,14 @@ else
         hold += 1
         if hold &gt;= holdNeed
             rec := &quot;انتظار&quot;
+
+if rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
+    lastSide := rec
+    sideBars += 1
+    waitBars := 0
+else
+    waitBars += 1
+    sideBars := 0
 
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 newBuy  = rec == &quot;شراء&quot; and rec[1] != &quot;شراء&quot;
@@ -1329,10 +1360,10 @@ mxPosLong = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;شراء&quot;
 mxPosShort = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;بيع&quot;
 if not tpHit and not slHit
     if blockedFlip and rec != &quot;انتظار&quot;
-        advice := &quot;لا تعكس | صفقتك قائمة — الخروج فقط عند ضعف&quot;
+        advice := mxLive ? (mxLiveLong ? &quot;لا تعكس صفقة الشراء | 5د ضوضاء&quot; : &quot;لا تعكس صفقة البيع | 5د ضوضاء&quot;) : (htfUp ? &quot;5د ضوضاء بيع | الاتجاه الأكبر صعود — لا تعكس&quot; : &quot;5د ضوضاء شراء | الاتجاه الأكبر هبوط — لا تعكس&quot;)
         adviceCol := color.orange
     else if blockedFlip and rec == &quot;انتظار&quot;
-        advice := &quot;اخرج فقط | ممنوع فتح العكس&quot;
+        advice := mxLive ? &quot;اخرج فقط | ممنوع فتح العكس&quot; : &quot;انتظار التأكيد | ممنوع العكس السريع على 5د&quot;
         adviceCol := color.orange
     else if mxPosLong and rec == &quot;بيع&quot;
         advice := pinHi or bounceEmaS ? &quot;لونج ضد الاتجاه | نجم/رفض EMA — لا تضيف، جني الارتداد&quot; : pinLo or sweepLo ? &quot;مطرقة تدعم لونجك | جني عند الرفض — لا زيادة&quot; : &quot;لونج ضد 1H | الارتداد للخروج لا للزيادة&quot;
@@ -1432,7 +1463,7 @@ var table t = table.new(position.top_right, 2, 21, border_width=1)
 
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 20)
-    table.cell(t, 0, 0, &quot;MEXC Flow v7.24&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Flow v7.25&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=sz)
     table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=sz)
