@@ -1,0 +1,1274 @@
+//@version=6
+indicator("MEXC Structure – Fib v2.38", overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
+
+// ══════════════════════════════════════════════════════════════
+// الإعدادات
+// ══════════════════════════════════════════════════════════════
+fibLookIn  = input.int(0, "مدى الفيبو (0=تلقائي)", minval=0, maxval=200)
+swingLen   = input.int(5, "حساسية خط الاتجاه", minval=3, maxval=20)
+minAtrMult = input.float(0.8, "أقل طول للموجة (ATR)", minval=0.3, step=0.1)
+showFib    = input.bool(true, "رسم فيبوناتشي")
+showGold   = input.bool(true, "تظليل المنطقة الذهبية")
+showAvwap  = input.bool(true, "VWAP مثبت على الموجة")
+showTL     = input.bool(true, "خط الاتجاه")
+showPoc    = input.bool(true, "POC بروفايل الموجة")
+showPos    = input.bool(true, "مراكز الصفقة")
+showTable  = input.bool(true, "إظهار الجدول")
+
+grpMx = "صفقة MEXC — انسخ Size(Cont)"
+mxSide   = input.string("شراء", "الاتجاه", options=["شراء", "بيع"], group=grpMx)
+mxEntry  = input.float(0.0, "سعر الدخول", group=grpMx, tooltip="Avg. Price من الشاشة. ثابت.")
+mxCont   = input.int(0, "الكمية Cont", minval=0, group=grpMx, tooltip="انسخ Size(Cont) كما هو بدون فاصلة. مثال: 5753")
+mxLev    = input.float(80.0, "الرافعة", minval=1, maxval=200, step=1, group=grpMx)
+mxMargin = input.float(0.0, "الهامش USDT", group=grpMx)
+mxMMR    = input.float(0.4, "هامش الصيانة %", minval=0.1, step=0.1, group=grpMx)
+mxContSz = input.float(0.1, "1 Cont = ؟ SOL", minval=0.0001, step=0.01, group=grpMx, tooltip="SOLUSDT على MEXC: 1 Cont = 0.1 SOL. لا تغيّره.")
+
+grpNews = "توقع الخبر"
+newsBiasIn = input.string("تلقائي", "توقّع السوق", options=["تلقائي", "تيسير", "محايد", "تشديد"], group=grpNews)
+
+// ══════════════════════════════════════════════════════════════
+// التوقيت — حدث NY / عرض أمستردام
+// ══════════════════════════════════════════════════════════════
+tzAMS = "Europe/Amsterdam"
+tzNY  = "America/New_York"
+
+h = hour(timenow, tzAMS)
+m = minute(timenow, tzAMS)
+s = second(timenow, tzAMS)
+timeStr = str.tostring(h,"00") + ":" + str.tostring(m,"00") + ":" + str.tostring(s,"00") + " أمستردام"
+
+hNY = hour(timenow, tzNY)
+mNY = minute(timenow, tzNY)
+
+f_nextTs(th, tm) =>
+    y = year(timenow, tzNY)
+    mo = month(timenow, tzNY)
+    d = dayofmonth(timenow, tzNY)
+    ts = timestamp(tzNY, y, mo, d, th, tm, 0)
+    ts <= timenow ? timestamp(tzNY, y, mo, d + 1, th, tm, 0) : ts
+
+f_nextTsTZ(tz, th, tm) =>
+    y = year(timenow, tz)
+    mo = month(timenow, tz)
+    d = dayofmonth(timenow, tz)
+    ts = timestamp(tz, y, mo, d, th, tm, 0)
+    ts <= timenow ? timestamp(tz, y, mo, d + 1, th, tm, 0) : ts
+
+f_leftStr(ts) =>
+    left = math.max(0, math.floor((ts - timenow) / 1000))
+    str.tostring(math.floor(left / 3600), "00") + ":" + str.tostring(math.floor((left % 3600) / 60), "00") + ":" + str.tostring(left % 60, "00")
+
+f_cBody(i) => math.max(math.abs(close[i] - open[i]), syminfo.mintick)
+f_cRng(i) => math.max(high[i] - low[i], syminfo.mintick)
+f_cWd(i) => math.min(close[i], open[i]) - low[i]
+f_cWu(i) => high[i] - math.max(close[i], open[i])
+
+tzLon = "Europe/London"
+tzTok = "Asia/Tokyo"
+hLon = hour(timenow, tzLon)
+mLon = minute(timenow, tzLon)
+hTok = hour(timenow, tzTok)
+inAsiaNow = hTok >= 9 and hTok < 18
+inLonNow  = (hLon > 8 or (hLon == 8 and mLon >= 0)) and (hLon < 16 or (hLon == 16 and mLon < 30))
+inNyNow   = (hNY > 9 or (hNY == 9 and mNY >= 30)) and hNY < 16
+inOvNow   = inLonNow and inNyNow
+tAsia = time(timeframe.period, "0900-1800:1234567", tzTok)
+tLon  = time(timeframe.period, "0800-1630:1234567", tzLon)
+tNy   = time(timeframe.period, "0930-1600:1234567", tzNY)
+var float pxAsia = na
+var float pxLon = na
+var float pxNy = na
+if not na(tAsia) and na(tAsia[1])
+    pxAsia := open
+if not na(tLon) and na(tLon[1])
+    pxLon := open
+if not na(tNy) and na(tNy[1])
+    pxNy := open
+f_sessDir(px) => na(px) ? "محايد" : close > px ? "صعود" : close < px ? "هبوط" : "محايد"
+f_sessCol(d) => d == "صعود" ? color.lime : d == "هبوط" ? color.red : color.gray
+tsLonOpen = f_nextTsTZ(tzLon, 8, 0)
+tsNyOpen  = f_nextTsTZ(tzNY, 9, 30)
+tsAsiaOpen = f_nextTsTZ(tzTok, 9, 0)
+tsLonEnd = f_nextTsTZ(tzLon, 16, 30)
+tsNyEnd  = f_nextTsTZ(tzNY, 16, 0)
+tsAsiaEnd = f_nextTsTZ(tzTok, 18, 0)
+nearLon = not inLonNow and math.floor((tsLonOpen - timenow) / 60000) <= 15
+nearNy  = not inNyNow and math.floor((tsNyOpen - timenow) / 60000) <= 15
+sessName = "سيولة ضعيفة"
+sessDir = "—"
+sessLeftTs = tsAsiaOpen
+sessCol = color.gray
+if inOvNow
+    sessName := "تداخل لندن-نيويورك"
+    sessDir := f_sessDir(pxNy)
+    sessLeftTs := tsLonEnd
+    sessCol := f_sessCol(sessDir)
+else if nearNy
+    sessName := "اقتراب نيويورك"
+    sessDir := "—"
+    sessLeftTs := tsNyOpen
+    sessCol := color.orange
+else if inNyNow
+    sessName := "نيويورك"
+    sessDir := f_sessDir(pxNy)
+    sessLeftTs := tsNyEnd
+    sessCol := f_sessCol(sessDir)
+else if nearLon
+    sessName := "اقتراب لندن"
+    sessDir := "—"
+    sessLeftTs := tsLonOpen
+    sessCol := color.orange
+else if inLonNow
+    sessName := "لندن"
+    sessDir := f_sessDir(pxLon)
+    sessLeftTs := tsLonEnd
+    sessCol := f_sessCol(sessDir)
+else if inAsiaNow
+    sessName := "آسيا"
+    sessDir := f_sessDir(pxAsia)
+    sessLeftTs := tsAsiaEnd
+    sessCol := f_sessCol(sessDir)
+else
+    sessName := "سيولة ضعيفة"
+    sessDir := "—"
+    sessLeftTs := tsAsiaOpen
+    sessCol := color.gray
+sessTxt = sessName + (sessDir == "—" ? "" : " | " + sessDir) + " · " + f_leftStr(sessLeftTs)
+
+f_amsClock(ts) =>
+    sameDay = year(ts, tzAMS) == year(timenow, tzAMS) and month(ts, tzAMS) == month(timenow, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(timenow, tzAMS)
+    tmrTs = timestamp(tzAMS, year(timenow, tzAMS), month(timenow, tzAMS), dayofmonth(timenow, tzAMS) + 1, 12, 0, 0)
+    isTmr = year(ts, tzAMS) == year(tmrTs, tzAMS) and month(ts, tzAMS) == month(tmrTs, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(tmrTs, tzAMS)
+    hhmm = str.tostring(hour(ts, tzAMS), "00") + ":" + str.tostring(minute(ts, tzAMS), "00")
+    dw = dayofweek(ts, tzAMS)
+    dwAr = dw == dayofweek.sunday ? "الأحد" : dw == dayofweek.monday ? "الاثنين" : dw == dayofweek.tuesday ? "الثلاثاء" : dw == dayofweek.wednesday ? "الأربعاء" : dw == dayofweek.thursday ? "الخميس" : dw == dayofweek.friday ? "الجمعة" : "السبت"
+    prefix = sameDay ? "" : isTmr ? "غداً " : dwAr + " " + str.tostring(dayofmonth(ts, tzAMS), "00") + "/" + str.tostring(month(ts, tzAMS), "00") + " "
+    prefix + hhmm
+
+FAR = timestamp("UTC", 2030, 1, 1, 0, 0, 0)
+f_tsNY(y, mo, d, th, tm) => timestamp(tzNY, y, mo, d, th, tm, 0)
+f_ifFut(ts) => ts > timenow ? ts : FAR
+f_sameNY(ts) => year(timenow, tzNY) == year(ts, tzNY) and month(timenow, tzNY) == month(ts, tzNY) and dayofmonth(timenow, tzNY) == dayofmonth(ts, tzNY)
+f_sameBar(ts) => year(time, tzNY) == year(ts, tzNY) and month(time, tzNY) == month(ts, tzNY) and dayofmonth(time, tzNY) == dayofmonth(ts, tzNY)
+
+yNY = year(timenow, tzNY)
+moNY = month(timenow, tzNY)
+dmNY = dayofmonth(timenow, tzNY)
+
+f_firstFri(y, mo) =>
+    t1 = timestamp(tzNY, y, mo, 1, 8, 30, 0)
+    add = (dayofweek.friday - dayofweek(t1, tzNY) + 7) % 7
+    timestamp(tzNY, y, mo, 1 + add, 8, 30, 0)
+nfpThis = f_firstFri(yNY, moNY)
+nfpNextMo = moNY == 12 ? 1 : moNY + 1
+nfpNextY  = moNY == 12 ? yNY + 1 : yNY
+tsNFP = nfpThis > timenow ? nfpThis : f_firstFri(nfpNextY, nfpNextMo)
+
+dwNow = dayofweek(timenow, tzNY)
+addThu = (dayofweek.thursday - dwNow + 7) % 7
+tsClaimsTry = timestamp(tzNY, yNY, moNY, dmNY + addThu, 8, 30, 0)
+tsClaims = tsClaimsTry > timenow ? tsClaimsTry : timestamp(tzNY, yNY, moNY, dmNY + addThu + 7, 8, 30, 0)
+
+c01 = f_tsNY(2026, 1, 13, 8, 30)
+c02 = f_tsNY(2026, 2, 13, 8, 30)
+c03 = f_tsNY(2026, 3, 11, 8, 30)
+c04 = f_tsNY(2026, 4, 10, 8, 30)
+c05 = f_tsNY(2026, 5, 12, 8, 30)
+c06 = f_tsNY(2026, 6, 10, 8, 30)
+c07 = f_tsNY(2026, 7, 14, 8, 30)
+c08 = f_tsNY(2026, 8, 12, 8, 30)
+c09 = f_tsNY(2026, 9, 11, 8, 30)
+c10 = f_tsNY(2026, 10, 14, 8, 30)
+c11 = f_tsNY(2026, 11, 10, 8, 30)
+c12 = f_tsNY(2026, 12, 10, 8, 30)
+ppiA = f_tsNY(2026, 9, 10, 8, 30)
+ppiB = f_tsNY(2026, 10, 15, 8, 30)
+ppiC = f_tsNY(2026, 11, 13, 8, 30)
+ppiD = f_tsNY(2026, 12, 15, 8, 30)
+pce0 = f_tsNY(2026, 8, 26, 8, 30)
+pceA = f_tsNY(2026, 9, 30, 8, 30)
+pceB = f_tsNY(2026, 10, 29, 8, 30)
+pceC = f_tsNY(2026, 11, 25, 8, 30)
+pceD = f_tsNY(2026, 12, 23, 8, 30)
+ism1 = f_tsNY(2026, 9, 1, 10, 0)
+ism2 = f_tsNY(2026, 10, 1, 10, 0)
+ism3 = f_tsNY(2026, 11, 2, 10, 0)
+ism4 = f_tsNY(2026, 12, 1, 10, 0)
+iss1 = f_tsNY(2026, 9, 3, 10, 0)
+iss2 = f_tsNY(2026, 10, 5, 10, 0)
+iss3 = f_tsNY(2026, 11, 4, 10, 0)
+iss4 = f_tsNY(2026, 12, 3, 10, 0)
+jo1 = f_tsNY(2026, 9, 1, 10, 0)
+jo2 = f_tsNY(2026, 9, 29, 10, 0)
+jo3 = f_tsNY(2026, 11, 3, 10, 0)
+jo4 = f_tsNY(2026, 12, 1, 10, 0)
+bg1 = f_tsNY(2026, 9, 2, 14, 0)
+bg2 = f_tsNY(2026, 10, 14, 14, 0)
+bg3 = f_tsNY(2026, 11, 25, 14, 0)
+mc1 = f_tsNY(2026, 9, 25, 10, 0)
+mc2 = f_tsNY(2026, 10, 30, 10, 0)
+mc3 = f_tsNY(2026, 11, 27, 10, 0)
+mc4 = f_tsNY(2026, 12, 23, 10, 0)
+mp1 = f_tsNY(2026, 9, 11, 10, 0)
+mp2 = f_tsNY(2026, 10, 9, 10, 0)
+mp3 = f_tsNY(2026, 11, 13, 10, 0)
+mp4 = f_tsNY(2026, 12, 11, 10, 0)
+ph1 = f_tsNY(2026, 9, 17, 8, 30)
+ph2 = f_tsNY(2026, 10, 15, 8, 30)
+ph3 = f_tsNY(2026, 11, 19, 8, 30)
+ph4 = f_tsNY(2026, 12, 17, 8, 30)
+rs1 = f_tsNY(2026, 9, 16, 8, 30)
+rs2 = f_tsNY(2026, 10, 15, 8, 30)
+rs3 = f_tsNY(2026, 11, 17, 8, 30)
+rs4 = f_tsNY(2026, 12, 16, 8, 30)
+gdpA = f_tsNY(2026, 9, 30, 8, 30)
+gdpB = f_tsNY(2026, 10, 29, 8, 30)
+gdpC = f_tsNY(2026, 11, 25, 8, 30)
+gdpD = f_tsNY(2026, 12, 23, 8, 30)
+cb1 = f_tsNY(2026, 9, 29, 10, 0)
+cb2 = f_tsNY(2026, 10, 27, 10, 0)
+cb3 = f_tsNY(2026, 11, 24, 10, 0)
+cb4 = f_tsNY(2026, 12, 29, 10, 0)
+dg1 = f_tsNY(2026, 9, 25, 8, 30)
+dg2 = f_tsNY(2026, 10, 27, 8, 30)
+dg3 = f_tsNY(2026, 11, 25, 8, 30)
+dg4 = f_tsNY(2026, 12, 23, 8, 30)
+hs1 = f_tsNY(2026, 9, 17, 8, 30)
+hs2 = f_tsNY(2026, 10, 20, 8, 30)
+hs3 = f_tsNY(2026, 11, 18, 8, 30)
+hs4 = f_tsNY(2026, 12, 17, 8, 30)
+nh1 = f_tsNY(2026, 9, 24, 10, 0)
+nh2 = f_tsNY(2026, 10, 27, 10, 0)
+nh3 = f_tsNY(2026, 11, 25, 10, 0)
+nh4 = f_tsNY(2026, 12, 23, 10, 0)
+chi1 = f_tsNY(2026, 9, 30, 9, 45)
+chi2 = f_tsNY(2026, 10, 30, 9, 45)
+chi3 = f_tsNY(2026, 11, 30, 9, 45)
+chi4 = f_tsNY(2026, 12, 30, 9, 45)
+sp1 = f_tsNY(2026, 9, 1, 9, 45)
+sp2 = f_tsNY(2026, 10, 1, 9, 45)
+sp3 = f_tsNY(2026, 11, 2, 9, 45)
+sp4 = f_tsNY(2026, 12, 1, 9, 45)
+tr1 = f_tsNY(2026, 9, 3, 8, 30)
+tr2 = f_tsNY(2026, 10, 6, 8, 30)
+tr3 = f_tsNY(2026, 11, 4, 8, 30)
+tr4 = f_tsNY(2026, 12, 8, 8, 30)
+fo1 = f_tsNY(2026, 9, 2, 10, 0)
+fo2 = f_tsNY(2026, 10, 2, 10, 0)
+fo3 = f_tsNY(2026, 11, 3, 10, 0)
+fo4 = f_tsNY(2026, 12, 3, 10, 0)
+em1 = f_tsNY(2026, 9, 15, 8, 30)
+em2 = f_tsNY(2026, 10, 15, 8, 30)
+em3 = f_tsNY(2026, 11, 16, 8, 30)
+em4 = f_tsNY(2026, 12, 15, 8, 30)
+eh1 = f_tsNY(2026, 9, 10, 10, 0)
+eh2 = f_tsNY(2026, 10, 13, 10, 0)
+eh3 = f_tsNY(2026, 11, 12, 10, 0)
+eh4 = f_tsNY(2026, 12, 9, 10, 0)
+mn1 = f_tsNY(2026, 10, 7, 14, 0)
+mn2 = f_tsNY(2026, 11, 18, 14, 0)
+mn3 = f_tsNY(2026, 12, 30, 14, 0)
+fl1 = f_tsNY(2026, 9, 24, 9, 45)
+fl2 = f_tsNY(2026, 10, 23, 9, 45)
+fl3 = f_tsNY(2026, 11, 20, 9, 45)
+fl4 = f_tsNY(2026, 12, 16, 9, 45)
+phs1 = f_tsNY(2026, 9, 17, 10, 0)
+phs2 = f_tsNY(2026, 10, 20, 10, 0)
+phs3 = f_tsNY(2026, 11, 18, 10, 0)
+phs4 = f_tsNY(2026, 12, 17, 10, 0)
+dal0 = f_tsNY(2026, 8, 31, 10, 30)
+dal1 = f_tsNY(2026, 9, 28, 10, 30)
+dal2 = f_tsNY(2026, 10, 26, 10, 30)
+dal3 = f_tsNY(2026, 11, 30, 10, 30)
+dal4 = f_tsNY(2026, 12, 28, 10, 30)
+wh1 = f_tsNY(2026, 9, 10, 10, 0)
+wh2 = f_tsNY(2026, 10, 8, 10, 0)
+wh3 = f_tsNY(2026, 11, 9, 10, 0)
+wh4 = f_tsNY(2026, 12, 9, 10, 0)
+ip1 = f_tsNY(2026, 9, 18, 9, 15)
+ip2 = f_tsNY(2026, 10, 16, 9, 15)
+ip3 = f_tsNY(2026, 11, 17, 9, 15)
+ip4 = f_tsNY(2026, 12, 16, 9, 15)
+prd1 = f_tsNY(2026, 9, 3, 8, 30)
+prd2 = f_tsNY(2026, 11, 5, 8, 30)
+prd3 = f_tsNY(2026, 12, 8, 8, 30)
+imp1 = f_tsNY(2026, 9, 16, 8, 30)
+imp2 = f_tsNY(2026, 10, 16, 8, 30)
+imp3 = f_tsNY(2026, 11, 17, 8, 30)
+imp4 = f_tsNY(2026, 12, 17, 8, 30)
+adpY = year(nfpThis > timenow ? nfpThis : f_firstFri(nfpNextY, nfpNextMo), tzNY)
+adpMo = month(nfpThis > timenow ? nfpThis : f_firstFri(nfpNextY, nfpNextMo), tzNY)
+adpD = dayofmonth(nfpThis > timenow ? nfpThis : f_firstFri(nfpNextY, nfpNextMo), tzNY)
+tsADP0 = timestamp(tzNY, adpY, adpMo, adpD - 2, 8, 15, 0)
+fm1 = f_tsNY(2026, 1, 28, 14, 0)
+fm3 = f_tsNY(2026, 3, 18, 14, 0)
+fm4 = f_tsNY(2026, 4, 29, 14, 0)
+fm6 = f_tsNY(2026, 6, 17, 14, 0)
+fm7 = f_tsNY(2026, 7, 29, 14, 0)
+fm9 = f_tsNY(2026, 9, 16, 14, 0)
+fm10 = f_tsNY(2026, 10, 28, 14, 0)
+fm12 = f_tsNY(2026, 12, 9, 14, 0)
+jhA = f_tsNY(2026, 8, 27, 8, 0)
+jhB = f_tsNY(2026, 8, 28, 10, 0)
+
+tsCPI  = math.min(f_ifFut(c01), f_ifFut(c02), f_ifFut(c03), f_ifFut(c04), f_ifFut(c05), f_ifFut(c06), f_ifFut(c07), f_ifFut(c08), f_ifFut(c09), f_ifFut(c10), f_ifFut(c11), f_ifFut(c12))
+tsPPI  = math.min(f_ifFut(ppiA), f_ifFut(ppiB), f_ifFut(ppiC), f_ifFut(ppiD))
+tsPCE  = math.min(f_ifFut(pce0), f_ifFut(pceA), f_ifFut(pceB), f_ifFut(pceC), f_ifFut(pceD))
+tsFOMC = math.min(f_ifFut(fm1), f_ifFut(fm3), f_ifFut(fm4), f_ifFut(fm6), f_ifFut(fm7), f_ifFut(fm9), f_ifFut(fm10), f_ifFut(fm12))
+tsFOMP = tsFOMC + 30 * 60 * 1000
+tsJH   = math.min(f_ifFut(jhA), f_ifFut(jhB))
+tsNFP  := f_ifFut(tsNFP)
+tsClaims := f_ifFut(tsClaims)
+tsISM  = math.min(f_ifFut(ism1), f_ifFut(ism2), f_ifFut(ism3), f_ifFut(ism4))
+tsISMs = math.min(f_ifFut(iss1), f_ifFut(iss2), f_ifFut(iss3), f_ifFut(iss4))
+tsJOLTS = math.min(f_ifFut(jo1), f_ifFut(jo2), f_ifFut(jo3), f_ifFut(jo4))
+tsBeige = math.min(f_ifFut(bg1), f_ifFut(bg2), f_ifFut(bg3))
+tsMich = math.min(f_ifFut(mc1), f_ifFut(mc2), f_ifFut(mc3), f_ifFut(mc4), f_ifFut(mp1), f_ifFut(mp2), f_ifFut(mp3), f_ifFut(mp4))
+tsADP  = f_ifFut(tsADP0)
+tsRetail = math.min(f_ifFut(rs1), f_ifFut(rs2), f_ifFut(rs3), f_ifFut(rs4))
+tsGDP  = math.min(f_ifFut(gdpA), f_ifFut(gdpB), f_ifFut(gdpC), f_ifFut(gdpD))
+tsConf = math.min(f_ifFut(cb1), f_ifFut(cb2), f_ifFut(cb3), f_ifFut(cb4))
+tsDur  = math.min(f_ifFut(dg1), f_ifFut(dg2), f_ifFut(dg3), f_ifFut(dg4))
+tsHouse = math.min(f_ifFut(hs1), f_ifFut(hs2), f_ifFut(hs3), f_ifFut(hs4))
+tsNHS  = math.min(f_ifFut(nh1), f_ifFut(nh2), f_ifFut(nh3), f_ifFut(nh4))
+tsChi  = math.min(f_ifFut(chi1), f_ifFut(chi2), f_ifFut(chi3), f_ifFut(chi4))
+tsSPM  = math.min(f_ifFut(sp1), f_ifFut(sp2), f_ifFut(sp3), f_ifFut(sp4))
+tsPhilly = math.min(f_ifFut(ph1), f_ifFut(ph2), f_ifFut(ph3), f_ifFut(ph4))
+tsTrade = math.min(f_ifFut(tr1), f_ifFut(tr2), f_ifFut(tr3), f_ifFut(tr4))
+tsFact = math.min(f_ifFut(fo1), f_ifFut(fo2), f_ifFut(fo3), f_ifFut(fo4))
+tsEmp = math.min(f_ifFut(em1), f_ifFut(em2), f_ifFut(em3), f_ifFut(em4))
+tsExist = math.min(f_ifFut(eh1), f_ifFut(eh2), f_ifFut(eh3), f_ifFut(eh4))
+tsMins = math.min(f_ifFut(mn1), f_ifFut(mn2), f_ifFut(mn3))
+tsFlash = math.min(f_ifFut(fl1), f_ifFut(fl2), f_ifFut(fl3), f_ifFut(fl4))
+tsPend = math.min(f_ifFut(phs1), f_ifFut(phs2), f_ifFut(phs3), f_ifFut(phs4))
+tsDallas = math.min(f_ifFut(dal0), f_ifFut(dal1), f_ifFut(dal2), f_ifFut(dal3), f_ifFut(dal4))
+tsWhole = math.min(f_ifFut(wh1), f_ifFut(wh2), f_ifFut(wh3), f_ifFut(wh4))
+tsIP = math.min(f_ifFut(ip1), f_ifFut(ip2), f_ifFut(ip3), f_ifFut(ip4))
+tsProd = math.min(f_ifFut(prd1), f_ifFut(prd2), f_ifFut(prd3))
+tsImp = math.min(f_ifFut(imp1), f_ifFut(imp2), f_ifFut(imp3), f_ifFut(imp4))
+
+nearestTs = math.min(math.min(tsCPI, tsPPI, tsPCE, tsFOMC, tsFOMP, tsJH, tsNFP, tsClaims), math.min(tsISM, tsISMs, tsJOLTS, tsBeige, tsMich, tsADP, tsRetail, tsGDP), math.min(tsConf, tsDur, tsHouse, tsNHS, tsChi, tsSPM, tsPhilly), math.min(tsTrade, tsFact, tsEmp, tsExist, tsMins, tsFlash), math.min(tsPend, tsDallas, tsWhole, tsIP, tsProd, tsImp))
+nearestName = nearestTs == tsJH ? "جاكسون هول" : nearestTs == tsFOMP ? "FOMC-P" : nearestTs == tsFOMC ? "FOMC" : nearestTs == tsMins ? "محضر FOMC" : nearestTs == tsPPI ? "PPI" : nearestTs == tsCPI ? "CPI" : nearestTs == tsPCE ? "PCE" : nearestTs == tsNFP ? "NFP" : nearestTs == tsClaims ? "Claims" : nearestTs == tsISM ? "ISM مصنع" : nearestTs == tsISMs ? "ISM خدمات" : nearestTs == tsJOLTS ? "JOLTS" : nearestTs == tsADP ? "ADP" : nearestTs == tsBeige ? "Beige" : nearestTs == tsMich ? "ميشيغان" : nearestTs == tsRetail ? "تجزئة" : nearestTs == tsGDP ? "GDP" : nearestTs == tsConf ? "ثقة المستهلك" : nearestTs == tsDur ? "سلع معمرة" : nearestTs == tsHouse ? "إسكان" : nearestTs == tsNHS ? "منازل جديدة" : nearestTs == tsExist ? "منازل قائمة" : nearestTs == tsPend ? "منازل معلقة" : nearestTs == tsChi ? "شيكاغو PMI" : nearestTs == tsSPM ? "PMI" : nearestTs == tsFlash ? "PMI أولي" : nearestTs == tsPhilly ? "فيلادلفيا" : nearestTs == tsDallas ? "دالاس Fed" : nearestTs == tsEmp ? "إمباير" : nearestTs == tsFact ? "طلبات مصانع" : nearestTs == tsTrade ? "تجارة" : nearestTs == tsWhole ? "مخزون جملة" : nearestTs == tsIP ? "إنتاج صناعي" : nearestTs == tsProd ? "إنتاجية" : nearestTs == tsImp ? "أسعار واردات" : "خبر"
+nearestCD = nearestName + "  " + f_amsClock(nearestTs) + "  ·  " + f_leftStr(nearestTs) + " متبقي"
+nearestLeft = math.max(0, math.floor((nearestTs - timenow) / 60000))
+
+isThu = dwNow == dayofweek.thursday
+isCpiDay  = f_sameNY(c01) or f_sameNY(c02) or f_sameNY(c03) or f_sameNY(c04) or f_sameNY(c05) or f_sameNY(c06) or f_sameNY(c07) or f_sameNY(c08) or f_sameNY(c09) or f_sameNY(c10) or f_sameNY(c11) or f_sameNY(c12)
+isPpiDay  = f_sameNY(ppiA) or f_sameNY(ppiB) or f_sameNY(ppiC) or f_sameNY(ppiD)
+isPceDay  = f_sameNY(pce0) or f_sameNY(pceA) or f_sameNY(pceB) or f_sameNY(pceC) or f_sameNY(pceD)
+isNfpDay  = f_sameNY(tsNFP) or (dayofweek(timenow, tzNY) == dayofweek.friday and dmNY <= 7)
+isFomcDay = f_sameNY(fm1) or f_sameNY(fm3) or f_sameNY(fm4) or f_sameNY(fm6) or f_sameNY(fm7) or f_sameNY(fm9) or f_sameNY(fm10) or f_sameNY(fm12)
+isJh27    = f_sameNY(jhA)
+isJh28    = f_sameNY(jhB)
+isIsmDay  = f_sameNY(ism1) or f_sameNY(ism2) or f_sameNY(ism3) or f_sameNY(ism4)
+isIsmsDay = f_sameNY(iss1) or f_sameNY(iss2) or f_sameNY(iss3) or f_sameNY(iss4)
+isJoltsDay = f_sameNY(jo1) or f_sameNY(jo2) or f_sameNY(jo3) or f_sameNY(jo4)
+isBeigeDay = f_sameNY(bg1) or f_sameNY(bg2) or f_sameNY(bg3)
+isMichDay = f_sameNY(mc1) or f_sameNY(mc2) or f_sameNY(mc3) or f_sameNY(mc4) or f_sameNY(mp1) or f_sameNY(mp2) or f_sameNY(mp3) or f_sameNY(mp4)
+isAdpDay  = f_sameNY(tsADP0)
+isRetailDay = f_sameNY(rs1) or f_sameNY(rs2) or f_sameNY(rs3) or f_sameNY(rs4)
+isGdpDay = f_sameNY(gdpA) or f_sameNY(gdpB) or f_sameNY(gdpC) or f_sameNY(gdpD)
+isConfDay = f_sameNY(cb1) or f_sameNY(cb2) or f_sameNY(cb3) or f_sameNY(cb4)
+isDurDay = f_sameNY(dg1) or f_sameNY(dg2) or f_sameNY(dg3) or f_sameNY(dg4)
+isHouseDay = f_sameNY(hs1) or f_sameNY(hs2) or f_sameNY(hs3) or f_sameNY(hs4)
+isNhsDay = f_sameNY(nh1) or f_sameNY(nh2) or f_sameNY(nh3) or f_sameNY(nh4)
+isChiDay = f_sameNY(chi1) or f_sameNY(chi2) or f_sameNY(chi3) or f_sameNY(chi4)
+isSpmDay = f_sameNY(sp1) or f_sameNY(sp2) or f_sameNY(sp3) or f_sameNY(sp4)
+isPhillyDay = f_sameNY(ph1) or f_sameNY(ph2) or f_sameNY(ph3) or f_sameNY(ph4)
+isTradeDay = f_sameNY(tr1) or f_sameNY(tr2) or f_sameNY(tr3) or f_sameNY(tr4)
+isFactDay = f_sameNY(fo1) or f_sameNY(fo2) or f_sameNY(fo3) or f_sameNY(fo4)
+isEmpDay = f_sameNY(em1) or f_sameNY(em2) or f_sameNY(em3) or f_sameNY(em4)
+isExistDay = f_sameNY(eh1) or f_sameNY(eh2) or f_sameNY(eh3) or f_sameNY(eh4)
+isMinsDay = f_sameNY(mn1) or f_sameNY(mn2) or f_sameNY(mn3)
+isFlashDay = f_sameNY(fl1) or f_sameNY(fl2) or f_sameNY(fl3) or f_sameNY(fl4)
+isPendDay = f_sameNY(phs1) or f_sameNY(phs2) or f_sameNY(phs3) or f_sameNY(phs4)
+isDallasDay = f_sameNY(dal0) or f_sameNY(dal1) or f_sameNY(dal2) or f_sameNY(dal3) or f_sameNY(dal4)
+isWholeDay = f_sameNY(wh1) or f_sameNY(wh2) or f_sameNY(wh3) or f_sameNY(wh4)
+isIpDay = f_sameNY(ip1) or f_sameNY(ip2) or f_sameNY(ip3) or f_sameNY(ip4)
+isProdDay = f_sameNY(prd1) or f_sameNY(prd2) or f_sameNY(prd3)
+isImpDay = f_sameNY(imp1) or f_sameNY(imp2) or f_sameNY(imp3) or f_sameNY(imp4)
+
+w0830 = hNY == 8 and mNY >= 28 and mNY <= 38
+w0815 = hNY == 8 and mNY >= 13 and mNY <= 25
+w0915 = hNY == 9 and mNY >= 13 and mNY <= 25
+w0945 = hNY == 9 and mNY >= 43 and mNY <= 55
+w1000 = (hNY == 9 and mNY >= 58) or (hNY == 10 and mNY <= 20)
+w1030 = hNY == 10 and mNY >= 28 and mNY <= 40
+w1400 = (hNY == 13 and mNY >= 58) or (hNY == 14 and mNY <= 18)
+w1430 = hNY == 14 and mNY >= 28 and mNY <= 50
+
+isHighImpact = ((isCpiDay or isPpiDay or isPceDay or isNfpDay or isThu or isRetailDay or isGdpDay or isDurDay or isHouseDay or isPhillyDay or isTradeDay or isEmpDay or isProdDay or isImpDay) and w0830) or (isFomcDay and (w1400 or w1430)) or (isMinsDay and w1400) or (isJh27 and hNY >= 7 and hNY <= 12) or (isJh28 and w1000) or ((isIsmDay or isIsmsDay or isJoltsDay or isMichDay or isConfDay or isNhsDay or isFactDay or isExistDay or isPendDay or isWholeDay) and w1000) or (isDallasDay and w1030) or (isIpDay and w0915) or (isAdpDay and w0815) or (isBeigeDay and w1400) or ((isChiDay or isSpmDay or isFlashDay) and w0945)
+approaching = nearestLeft <= 12 and nearestLeft > 0
+newsStatus = isHighImpact ? "نشط الآن" : approaching ? "اقتراب" : "آمن"
+newsCol = isHighImpact ? color.red : approaching ? color.orange : color.lime
+
+hBar = hour(time, tzNY)
+mBar = minute(time, tzNY)
+isThuBar = dayofweek(time, tzNY) == dayofweek.thursday
+isCpiBar  = f_sameBar(c01) or f_sameBar(c02) or f_sameBar(c03) or f_sameBar(c04) or f_sameBar(c05) or f_sameBar(c06) or f_sameBar(c07) or f_sameBar(c08) or f_sameBar(c09) or f_sameBar(c10) or f_sameBar(c11) or f_sameBar(c12)
+isPpiBar  = f_sameBar(ppiA) or f_sameBar(ppiB) or f_sameBar(ppiC) or f_sameBar(ppiD)
+isPceBar  = f_sameBar(pce0) or f_sameBar(pceA) or f_sameBar(pceB) or f_sameBar(pceC) or f_sameBar(pceD)
+isNfpBar  = dayofweek(time, tzNY) == dayofweek.friday and dayofmonth(time, tzNY) <= 7
+isFomcBar = f_sameBar(fm1) or f_sameBar(fm3) or f_sameBar(fm4) or f_sameBar(fm6) or f_sameBar(fm7) or f_sameBar(fm9) or f_sameBar(fm10) or f_sameBar(fm12)
+isJh27Bar = f_sameBar(jhA)
+isJh28Bar = f_sameBar(jhB)
+isIsmBar  = f_sameBar(ism1) or f_sameBar(ism2) or f_sameBar(ism3) or f_sameBar(ism4)
+isIsmsBar = f_sameBar(iss1) or f_sameBar(iss2) or f_sameBar(iss3) or f_sameBar(iss4)
+isJoltsBar = f_sameBar(jo1) or f_sameBar(jo2) or f_sameBar(jo3) or f_sameBar(jo4)
+isBeigeBar = f_sameBar(bg1) or f_sameBar(bg2) or f_sameBar(bg3)
+isMichBar = f_sameBar(mc1) or f_sameBar(mc2) or f_sameBar(mc3) or f_sameBar(mc4) or f_sameBar(mp1) or f_sameBar(mp2) or f_sameBar(mp3) or f_sameBar(mp4)
+isAdpBar  = f_sameBar(tsADP0)
+isRetailBar = f_sameBar(rs1) or f_sameBar(rs2) or f_sameBar(rs3) or f_sameBar(rs4)
+isGdpBar = f_sameBar(gdpA) or f_sameBar(gdpB) or f_sameBar(gdpC) or f_sameBar(gdpD)
+isConfBar = f_sameBar(cb1) or f_sameBar(cb2) or f_sameBar(cb3) or f_sameBar(cb4)
+isDurBar = f_sameBar(dg1) or f_sameBar(dg2) or f_sameBar(dg3) or f_sameBar(dg4)
+isHouseBar = f_sameBar(hs1) or f_sameBar(hs2) or f_sameBar(hs3) or f_sameBar(hs4)
+isNhsBar = f_sameBar(nh1) or f_sameBar(nh2) or f_sameBar(nh3) or f_sameBar(nh4)
+isChiBar = f_sameBar(chi1) or f_sameBar(chi2) or f_sameBar(chi3) or f_sameBar(chi4)
+isSpmBar = f_sameBar(sp1) or f_sameBar(sp2) or f_sameBar(sp3) or f_sameBar(sp4)
+isPhillyBar = f_sameBar(ph1) or f_sameBar(ph2) or f_sameBar(ph3) or f_sameBar(ph4)
+isTradeBar = f_sameBar(tr1) or f_sameBar(tr2) or f_sameBar(tr3) or f_sameBar(tr4)
+isFactBar = f_sameBar(fo1) or f_sameBar(fo2) or f_sameBar(fo3) or f_sameBar(fo4)
+isEmpBar = f_sameBar(em1) or f_sameBar(em2) or f_sameBar(em3) or f_sameBar(em4)
+isExistBar = f_sameBar(eh1) or f_sameBar(eh2) or f_sameBar(eh3) or f_sameBar(eh4)
+isMinsBar = f_sameBar(mn1) or f_sameBar(mn2) or f_sameBar(mn3)
+isFlashBar = f_sameBar(fl1) or f_sameBar(fl2) or f_sameBar(fl3) or f_sameBar(fl4)
+isPendBar = f_sameBar(phs1) or f_sameBar(phs2) or f_sameBar(phs3) or f_sameBar(phs4)
+isDallasBar = f_sameBar(dal0) or f_sameBar(dal1) or f_sameBar(dal2) or f_sameBar(dal3) or f_sameBar(dal4)
+isWholeBar = f_sameBar(wh1) or f_sameBar(wh2) or f_sameBar(wh3) or f_sameBar(wh4)
+isIpBar = f_sameBar(ip1) or f_sameBar(ip2) or f_sameBar(ip3) or f_sameBar(ip4)
+isProdBar = f_sameBar(prd1) or f_sameBar(prd2) or f_sameBar(prd3)
+isImpBar = f_sameBar(imp1) or f_sameBar(imp2) or f_sameBar(imp3) or f_sameBar(imp4)
+w0830Bar = hBar == 8 and mBar >= 28 and mBar <= 38
+w0815Bar = hBar == 8 and mBar >= 13 and mBar <= 25
+w0915Bar = hBar == 9 and mBar >= 13 and mBar <= 25
+w0945Bar = hBar == 9 and mBar >= 43 and mBar <= 55
+w1000Bar = (hBar == 9 and mBar >= 58) or (hBar == 10 and mBar <= 20)
+w1030Bar = hBar == 10 and mBar >= 28 and mBar <= 40
+w1400Bar = (hBar == 13 and mBar >= 58) or (hBar == 14 and mBar <= 18)
+w1430Bar = hBar == 14 and mBar >= 28 and mBar <= 50
+isHighImpactBar = ((isCpiBar or isPpiBar or isPceBar or isNfpBar or isThuBar or isRetailBar or isGdpBar or isDurBar or isHouseBar or isPhillyBar or isTradeBar or isEmpBar or isProdBar or isImpBar) and w0830Bar) or (isFomcBar and (w1400Bar or w1430Bar)) or (isMinsBar and w1400Bar) or (isJh27Bar and hBar >= 7 and hBar <= 12) or (isJh28Bar and w1000Bar) or ((isIsmBar or isIsmsBar or isJoltsBar or isMichBar or isConfBar or isNhsBar or isFactBar or isExistBar or isPendBar or isWholeBar) and w1000Bar) or (isDallasBar and w1030Bar) or (isIpBar and w0915Bar) or (isAdpBar and w0815Bar) or (isBeigeBar and w1400Bar) or ((isChiBar or isSpmBar or isFlashBar) and w0945Bar)
+f_nearBar(ts) =>
+    leftM = hour(ts, tzNY) * 60 + minute(ts, tzNY) - (hBar * 60 + mBar)
+    f_sameBar(ts) and leftM <= 12 and leftM > 0
+approachingBar = f_nearBar(nearestTs) or (isThuBar and hBar == 8 and mBar >= 18 and mBar < 28)
+
+// ══════════════════════════════════════════════════════════════
+// فيبو تلقائي مواكب — مثل Auto Fib في TradingView
+// الطرف الأحدث يحدد الاتجاه: قمة أحدث = لونج | قاع أحدث = شورت
+// 1.0 يتحرك مع السعر الحي فلا ينقلب الاتجاه أثناء الصعود
+// ══════════════════════════════════════════════════════════════
+atr = ta.atr(14)
+lookback = fibLookIn > 0 ? fibLookIn : (timeframe.in_seconds() >= 900 ? 36 : 56)
+
+hiOff = ta.highestbars(high, lookback)
+loOff = ta.lowestbars(low, lookback)
+swingH = ta.highest(high, lookback)
+swingL = ta.lowest(low, lookback)
+swingHB = bar_index + hiOff
+swingLB = bar_index + loOff
+
+haveSwing = not na(swingH) and not na(swingL) and swingH != swingL
+isLongFib = haveSwing and hiOff > loOff
+isShortFib = haveSwing and loOff > hiOff
+rng = haveSwing ? math.abs(swingH - swingL) : 0.0
+legOk = haveSwing and rng >= atr * minAtrMult
+
+p0 = isLongFib ? swingL : swingH
+p1 = isLongFib ? swingH : swingL
+b0 = isLongFib ? swingLB : swingHB
+b1 = isLongFib ? swingHB : swingLB
+
+f_lv(r) => p0 + (p1 - p0) * r
+lv000 = f_lv(0.0)
+lv236 = f_lv(0.236)
+lv382 = f_lv(0.382)
+lv500 = f_lv(0.5)
+lv618 = f_lv(0.618)
+lv786 = f_lv(0.786)
+lv100 = f_lv(1.0)
+lv127 = f_lv(1.272)
+lv162 = f_lv(1.618)
+
+inGold    = legOk and (isLongFib ? (close <= lv618 and close >= lv382) : (close >= lv618 and close <= lv382))
+inShallow = legOk and (isLongFib ? (close <= lv786 and close > lv618) : (close >= lv786 and close < lv618))
+atEnd     = legOk and (isLongFib ? (close >= lv786 and close <= lv100 * 1.002) : (close <= lv786 and close >= lv100 * 0.998))
+lostStart = legOk and (isLongFib ? close < lv000 : close > lv000)
+extended  = legOk and (isLongFib ? high >= lv127 : low <= lv127)
+
+// ══════════════════════════════════════════════════════════════
+// VWAP مثبت + POC من بداية الموجة
+// ══════════════════════════════════════════════════════════════
+f_avwap(startB) =>
+    look = math.max(1, math.min(bar_index - startB + 1, 160))
+    float n = 0.0
+    float d = 0.0
+    for i = 0 to look - 1
+        n += hlc3[i] * volume[i]
+        d += volume[i]
+    d > 0 ? n / d : na
+
+avwap = legOk ? f_avwap(math.max(0, b0)) : na
+aboveAv = not na(avwap) and close > avwap
+
+dxyN = request.security("TVC:DXY", "1", close, barmerge.gaps_off, barmerge.lookahead_off)
+dxyP = request.security("TVC:DXY", "1", close[15], barmerge.gaps_off, barmerge.lookahead_off)
+y2N = request.security("TVC:US02Y", "1", close, barmerge.gaps_off, barmerge.lookahead_off)
+y2P = request.security("TVC:US02Y", "1", close[15], barmerge.gaps_off, barmerge.lookahead_off)
+y10N = request.security("TVC:US10Y", "1", close, barmerge.gaps_off, barmerge.lookahead_off)
+y10P = request.security("TVC:US10Y", "1", close[15], barmerge.gaps_off, barmerge.lookahead_off)
+btcN = request.security("BINANCE:BTCUSDT", "1", close, barmerge.gaps_off, barmerge.lookahead_off)
+btcP = request.security("BINANCE:BTCUSDT", "1", close[15], barmerge.gaps_off, barmerge.lookahead_off)
+solN = request.security(syminfo.tickerid, "1", close, barmerge.gaps_off, barmerge.lookahead_off)
+solP = request.security(syminfo.tickerid, "1", close[15], barmerge.gaps_off, barmerge.lookahead_off)
+dxyCh = not na(dxyN) and not na(dxyP) and dxyP != 0 ? (dxyN - dxyP) / dxyP * 100.0 : 0.0
+y2Ch = not na(y2N) and not na(y2P) ? y2N - y2P : 0.0
+y10Ch = not na(y10N) and not na(y10P) ? y10N - y10P : 0.0
+btcRet = not na(btcN) and not na(btcP) and btcP != 0 ? (btcN - btcP) / btcP * 100.0 : 0.0
+solRet = not na(solN) and not na(solP) and solP != 0 ? (solN - solP) / solP * 100.0 : 0.0
+atrS = nz(atr, close * 0.01)
+already = atrS > 0 and not na(solN) and not na(solP) ? math.abs(solN - solP) / atrS : 0.0
+haveMacro = not na(dxyN)
+int scH = 0
+int scD = 0
+if dxyCh > 0.04
+    scH += 2
+else if dxyCh < -0.04
+    scD += 2
+if not na(y2N) ? y2Ch > 0.015 : y10Ch > 0.012
+    scH += 2
+else if not na(y2N) ? y2Ch < -0.015 : y10Ch < -0.012
+    scD += 2
+if btcRet < -0.10
+    scH += 1
+else if btcRet > 0.10
+    scD += 1
+if solRet < -0.12
+    scH += 1
+else if solRet > 0.12
+    scD += 1
+rawHawk = scH >= 3 and scH >= scD + 2
+rawDove = scD >= 3 and scD >= scH + 2
+pricedHawk = rawHawk and already >= 0.75 and solRet < 0
+pricedDove = rawDove and already >= 0.75 and solRet > 0
+autoBias = not haveMacro ? "محايد" : pricedHawk or pricedDove ? "محايد" : rawHawk ? "تشديد" : rawDove ? "تيسير" : "محايد"
+usedBias = newsBiasIn == "تلقائي" ? autoBias : newsBiasIn
+pricedTag = pricedHawk ? "مسعّر هبوط" : pricedDove ? "مسعّر صعود" : already < 0.25 ? "غير مسعّر" : "جزئي"
+expShow = (newsBiasIn == "تلقائي" ? "تلقائي: " + autoBias : newsBiasIn) + " | " + pricedTag
+
+statN = timeframe.in_seconds() >= 900 ? 4 : 8
+isMajorNewsBar = ((isNfpBar or isCpiBar or isPpiBar or isPceBar or isRetailBar or isGdpBar or isDurBar or isHouseBar or isPhillyBar or isTradeBar or isEmpBar or isProdBar or isImpBar) and w0830Bar) or (isFomcBar and (w1400Bar or w1430Bar)) or (isMinsBar and w1400Bar) or (isJh28Bar and w1000Bar) or ((isIsmBar or isIsmsBar or isJoltsBar or isMichBar or isConfBar or isNhsBar or isFactBar or isExistBar or isPendBar or isWholeBar) and w1000Bar) or (isDallasBar and w1030Bar) or (isIpBar and w0915Bar) or (isAdpBar and w0815Bar) or (isBeigeBar and w1400Bar) or ((isChiBar or isSpmBar or isFlashBar) and w0945Bar)
+isClaimNewsBar = isThuBar and w0830Bar and not isNfpBar and not isCpiBar and not isPpiBar and not isPceBar
+newsStart = isMajorNewsBar and not isMajorNewsBar[1]
+claimStart = isClaimNewsBar and not isClaimNewsBar[1]
+flowBull = isLongFib and aboveAv
+flowBear = isShortFib and not aboveAv
+var int qBar = na
+var float qAtr = na
+var int qTrend = 0
+var float qPx = na
+var float qHi = na
+var float qLo = na
+var bool qClaim = false
+var string qName = ""
+var float lastRet = na
+var float lastEndPx = na
+var float lastLo2 = na
+var float lastHi2 = na
+var string lastNm = ""
+var array<float> evAbs = array.new_float()
+var array<float> evAbsC = array.new_float()
+var array<int> evWith = array.new_int()
+if newsStart or claimStart
+    qBar := bar_index
+    qAtr := nz(atr, close * 0.01)
+    qTrend := flowBull ? 1 : flowBear ? -1 : (close >= open ? 1 : -1)
+    qPx := close
+    qHi := high
+    qLo := low
+    qClaim := claimStart
+    qName := isJh28Bar or isJh27Bar ? "جاكسون هول" : isFomcBar ? "FOMC" : isMinsBar ? "محضر FOMC" : isCpiBar ? "CPI" : isPpiBar ? "PPI" : isPceBar ? "PCE" : isNfpBar ? "NFP" : isRetailBar ? "تجزئة" : isGdpBar ? "GDP" : isIsmBar ? "ISM مصنع" : isIsmsBar ? "ISM خدمات" : isJoltsBar ? "JOLTS" : isAdpBar ? "ADP" : isMichBar ? "ميشيغان" : isConfBar ? "ثقة المستهلك" : isDurBar ? "سلع معمرة" : isHouseBar ? "إسكان" : isNhsBar ? "منازل جديدة" : isExistBar ? "منازل قائمة" : isPendBar ? "منازل معلقة" : isChiBar ? "شيكاغو PMI" : isSpmBar ? "PMI" : isFlashBar ? "PMI أولي" : isPhillyBar ? "فيلادلفيا" : isDallasBar ? "دالاس Fed" : isEmpBar ? "إمباير" : isFactBar ? "طلبات مصانع" : isTradeBar ? "تجارة" : isWholeBar ? "مخزون جملة" : isIpBar ? "إنتاج صناعي" : isProdBar ? "إنتاجية" : isImpBar ? "أسعار واردات" : isBeigeBar ? "Beige" : claimStart ? "Claims" : "خبر"
+if not na(qBar) and bar_index > qBar and bar_index < qBar + statN
+    qHi := math.max(qHi, high)
+    qLo := math.min(qLo, low)
+if not na(qBar) and bar_index - qBar == statN
+    qHi := math.max(qHi, high)
+    qLo := math.min(qLo, low)
+    span = math.max(qHi - qPx, qPx - qLo)
+    moveAtr = qAtr > 0 ? span / qAtr : 0.0
+    ret = close - qPx
+    withT = (ret > 0 and qTrend > 0) or (ret < 0 and qTrend < 0) ? 1 : 0
+    if qClaim
+        array.push(evAbsC, moveAtr)
+        if array.size(evAbsC) > 12
+            array.shift(evAbsC)
+    else
+        array.push(evAbs, moveAtr)
+        array.push(evWith, withT)
+        if array.size(evAbs) > 12
+            array.shift(evAbs)
+            array.shift(evWith)
+    lastRet := close - qPx
+    lastEndPx := close
+    lastLo2 := qLo
+    lastHi2 := qHi
+    lastNm := qName
+    qBar := na
+nEv = array.size(evAbs)
+nEvC = array.size(evAbsC)
+avgAbs = nEv > 0 ? array.avg(evAbs) : na
+avgAbsC = nEvC > 0 ? array.avg(evAbsC) : na
+int nWith = 0
+if nEv > 0
+    for i = 0 to nEv - 1
+        nWith += array.get(evWith, i)
+pctWith = nEv > 0 ? 100.0 * nWith / nEv : na
+useClaims = nearestTs == tsClaims
+avgUse = useClaims ? (nEvC >= 3 ? avgAbsC : nz(avgAbs, 1.2) * 0.45) : avgAbs
+nShow = useClaims ? nEvC : nEv
+statTxt = nShow < 3 ? "لا يكفي تاريخ سعري" : str.tostring(close - (nShow >= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), "#.##") + " – " + str.tostring(close + (nShow >= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), "#.##") + (useClaims ? "" : pctWith >= 60 ? (isLongFib ? " | غالباً صعود" : " | غالباً هبوط") : pctWith <= 40 ? (isLongFib ? " | غالباً هبوط" : " | غالباً صعود") : " | اتجاه مختلط")
+statCol = nShow < 3 ? color.gray : useClaims ? color.orange : pctWith >= 60 ? color.lime : pctWith <= 40 ? color.red : color.orange
+expCol = usedBias == "تيسير" ? color.lime : usedBias == "تشديد" ? color.red : color.gray
+atrAvg = ta.sma(atr, 20)
+sq = atr < atrAvg * 0.82 ? 1.35 : atr > atrAvg * 1.25 ? 0.85 : 1.0
+leftDn = pricedHawk ? 0.45 : 1.0
+leftUp = pricedDove ? 0.45 : 1.0
+band = (nShow >= 3 ? avgUse : (useClaims ? 0.55 : 1.2)) * nz(atr, close * 0.01) * sq
+float pxLo = close - band
+float pxHi = close + band
+biasTxt = "محايد"
+if usedBias == "تشديد"
+    pxLo := close - band * 1.30 * leftDn
+    pxHi := close + band * (pricedHawk ? 0.90 : 0.50)
+    biasTxt := "هبوط"
+else if usedBias == "تيسير"
+    pxLo := close - band * (pricedDove ? 0.90 : 0.50)
+    pxHi := close + band * 1.30 * leftUp
+    biasTxt := "صعود"
+else
+    pxLo := close - band * (pricedHawk ? 0.55 : 1.0)
+    pxHi := close + band * (pricedDove ? 0.55 : 1.0)
+pxTxt = str.tostring(pxLo, "#.##") + " – " + str.tostring(pxHi, "#.##")
+pxCol = biasTxt == "صعود" ? color.lime : biasTxt == "هبوط" ? color.red : color.orange
+newsDirTxt = biasTxt
+newsDirCol = pxCol
+newsPricedTxt = pricedTag
+liveOn = not na(qBar)
+resRet = liveOn ? close - qPx : lastRet
+resNow = liveOn ? close : lastEndPx
+resLo = liveOn ? qLo : lastLo2
+resHi = liveOn ? qHi : lastHi2
+resNm = liveOn ? qName : lastNm
+resPx0 = liveOn ? qPx : (na(lastEndPx) or na(lastRet) ? na : lastEndPx - lastRet)
+resThr = nz(atr, close * 0.01) * 0.25
+resPct = not na(resRet) and not na(resPx0) and resPx0 != 0 ? resRet / resPx0 * 100.0 : na
+resPre = liveOn ? "الآن " : "آخر "
+newsResTxt = na(resRet) ? "انتظار الخبر" : resRet > resThr ? resPre + resNm + " | صعد " + str.tostring(resNow, "#.##") + " (+" + str.tostring(resPct, "#.#") + ")" : resRet < -resThr ? resPre + resNm + " | نزل " + str.tostring(resNow, "#.##") + " (" + str.tostring(resPct, "#.#") + ")" : resPre + resNm + " | تذبذب " + str.tostring(resLo, "#.##") + "-" + str.tostring(resHi, "#.##")
+newsResCol = na(resRet) ? color.gray : resRet > resThr ? color.lime : resRet < -resThr ? color.red : color.orange
+
+var int lastFireTs = na
+var int lastPostMin = 30
+if isHighImpact and not isHighImpact[1]
+    lastFireTs := timenow
+    lastPostMin := (isFomcDay or isMinsDay or isBeigeDay or isJh27 or isJh28) ? 60 : 30
+newsPre = nearestTs < FAR and nearestLeft <= 60
+newsPost = not na(lastFireTs) and (timenow - lastFireTs) <= lastPostMin * 60000
+newsPanel = newsPre or newsPost or isHighImpact
+
+f_poc(startB) =>
+    look = math.max(2, math.min(bar_index - startB + 1, 120))
+    float loP = low
+    float hiP = high
+    for i = 0 to look - 1
+        loP := math.min(loP, low[i])
+        hiP := math.max(hiP, high[i])
+    rngP = math.max(hiP - loP, syminfo.mintick * 10)
+    bins = 16
+    volA = array.new_float(bins, 0.0)
+    for i = 0 to look - 1
+        mid = (high[i] + low[i]) * 0.5
+        b = int(math.min(bins - 1, math.max(0, math.floor((mid - loP) / rngP * bins))))
+        array.set(volA, b, array.get(volA, b) + volume[i])
+    int best = 0
+    float bestV = 0.0
+    for b = 0 to bins - 1
+        v = array.get(volA, b)
+        if v > bestV
+            bestV := v
+            best := b
+    loP + (best + 0.5) / bins * rngP
+
+poc = legOk ? f_poc(math.max(0, b0)) : na
+nearPoc = not na(poc) and math.abs(close - poc) <= atr * 0.35
+
+// ══════════════════════════════════════════════════════════════
+// خط الاتجاه من قيعان/قمم مؤكدة (لا يُحرّك الفيبو)
+// ══════════════════════════════════════════════════════════════
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low, swingLen, swingLen)
+var float lastH = na
+var float lastL = na
+var int   lastHB = na
+var int   lastLB = na
+var float prevH = na
+var float prevL = na
+var int   prevHB = na
+var int   prevLB = na
+if not na(ph)
+    prevH := lastH
+    prevHB := lastHB
+    lastH := ph
+    lastHB := bar_index - swingLen
+if not na(pl)
+    prevL := lastL
+    prevLB := lastLB
+    lastL := pl
+    lastLB := bar_index - swingLen
+
+tlUp = not na(prevL) and not na(lastL) and lastLB != prevLB and lastL >= prevL
+tlDn = not na(prevH) and not na(lastH) and lastHB != prevHB and lastH <= prevH
+
+f_tlPrice(x1, y1, x2, y2, x) =>
+    den = x2 - x1
+    den == 0 ? y2 : y1 + (y2 - y1) * (x - x1) / den
+
+tlNow = tlUp ? f_tlPrice(prevLB, prevL, lastLB, lastL, bar_index) : tlDn ? f_tlPrice(prevHB, prevH, lastHB, lastH, bar_index) : na
+aboveTL = not na(tlNow) and close > tlNow
+
+// ══════════════════════════════════════════════════════════════
+// نمط الشمعة — تأكيد فقط
+// ══════════════════════════════════════════════════════════════
+body = math.abs(close - open)
+upW = high - math.max(close, open)
+dnW = math.min(close, open) - low
+bullEng = close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+bearEng = close < open and close[1] > open[1] and close <= open[1] and open >= close[1]
+hammer = dnW >= body * 1.8 and upW <= body * 0.45 and close >= open
+star   = upW >= body * 1.8 and dnW <= body * 0.45 and close <= open
+bullPat = bullEng or hammer or (close > open and close > high[1])
+bearPat = bearEng or star or (close < open and close < low[1])
+ema5s = ta.ema(close, 5)
+patText = (bullEng ? "ابتلاع شرائي" : bearEng ? "ابتلاع بيعي" : hammer ? "مطرقة" : star ? "نجم هابط" : bullPat ? "زخم صاعد" : bearPat ? "زخم هابط" : "لا نمط") + " | EMA5 " + (ema5s > ema5s[1] ? "صاعد" : "هابط")
+patCol  = bullPat ? color.lime : bearPat ? color.red : color.gray
+
+volSma = ta.sma(volume, 20)
+strongVol = volume >= volSma * 1.25
+rvolSt = volSma > 0 ? volume / volSma : 1.0
+bigBuy = rvolSt >= 2.0 and close > open
+bigSell = rvolSt >= 2.0 and close < open
+whaleTxt = bigBuy ? "شراء كمية كبيرة" : bigSell ? "بيع كمية كبيرة" : "عادي"
+whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
+
+ema5Up = ema5s > ema5s[1]
+ema5Dn = ema5s < ema5s[1]
+ema5Txt = (ema5Up ? "صاعد" : ema5Dn ? "هابط" : "ثابت") + (close > ema5s ? " | فوق" : " | تحت")
+ema5Col = ema5Up ? color.lime : ema5Dn ? color.red : color.gray
+wickDn = math.min(close, open) - low
+wickUp = high - math.max(close, open)
+bounceGoldL = isLongFib and inGold and close > open and low <= lv618 and close >= lv382
+bounceGoldS = isShortFib and inGold and close < open and high >= lv618 and close <= lv382
+bounceAvL = isLongFib and not na(avwap) and low <= avwap and close > avwap and close > open and wickDn >= atr * 0.12
+bounceAvS = isShortFib and not na(avwap) and high >= avwap and close < avwap and close < open and wickUp >= atr * 0.12
+bounceTlL = tlUp and not na(tlNow) and low <= tlNow and close > tlNow and close > open
+bounceTlS = tlDn and not na(tlNow) and high >= tlNow and close < tlNow and close < open
+brkEndL = isLongFib and close > lv100 and close[1] <= lv100 and (bullPat or strongVol)
+brkEndS = isShortFib and close < lv100 and close[1] >= lv100 and (bearPat or strongVol)
+holdExtL = isLongFib and extended and close > lv100 and ema5Up
+holdExtS = isShortFib and extended and close < lv100 and ema5Dn
+zoneTxt = "لا كسر/ارتداد"
+zoneCol = color.gray
+if lostStart
+    zoneTxt := "كسر الوقف | إلغاء الموجة"
+    zoneCol := color.red
+else if brkEndL or holdExtL
+    zoneTxt := "كسر القمة | امتداد صعود"
+    zoneCol := color.lime
+else if brkEndS or holdExtS
+    zoneTxt := "كسر القاع | امتداد هبوط"
+    zoneCol := color.red
+else if bounceGoldL
+    zoneTxt := "ارتداد ذهبية | صعود"
+    zoneCol := color.lime
+else if bounceGoldS
+    zoneTxt := "ارتداد ذهبية | هبوط"
+    zoneCol := color.red
+else if bounceAvL
+    zoneTxt := "ارتداد VWAP | صعود"
+    zoneCol := color.lime
+else if bounceAvS
+    zoneTxt := "ارتداد VWAP | هبوط"
+    zoneCol := color.red
+else if bounceTlL
+    zoneTxt := "ارتداد خط الاتجاه | صعود"
+    zoneCol := color.lime
+else if bounceTlS
+    zoneTxt := "ارتداد خط الاتجاه | هبوط"
+    zoneCol := color.red
+
+atrW = nz(atr, close * 0.01)
+b1 = f_cBody(1)
+b2 = f_cBody(2)
+b3 = f_cBody(3)
+r1 = f_cRng(1)
+wd1 = f_cWd(1)
+wu1 = f_cWu(1)
+wd2 = f_cWd(2)
+wu2 = f_cWu(2)
+pos1 = (close[1] - low[1]) / r1
+bull1 = close[1] > open[1]
+bear1 = close[1] < open[1]
+bull2 = close[2] > open[2]
+bear2 = close[2] < open[2]
+bull3 = close[3] > open[3]
+bear3 = close[3] < open[3]
+mornStar = bear3 and b2 <= b3 * 0.55 and bull1 and close[1] > (open[3] + close[3]) * 0.5 and low[2] < math.min(low[3], low[1])
+evenStar = bull3 and b2 <= b3 * 0.55 and bear1 and close[1] < (open[3] + close[3]) * 0.5 and high[2] > math.max(high[3], high[1])
+soldiers = bull1 and bull2 and bull3 and close[1] > close[2] and close[2] > close[3] and wu1 < b1 * 0.5 and wu2 < b2 * 0.5 and b1 >= atrW * 0.22
+crows = bear1 and bear2 and bear3 and close[1] < close[2] and close[2] < close[3] and wd1 < b1 * 0.5 and wd2 < b2 * 0.5 and b1 >= atrW * 0.22
+bullEngC = bull1 and bear2 and close[1] >= open[2] and open[1] <= close[2] and b1 > b2
+bearEngC = bear1 and bull2 and close[1] <= open[2] and open[1] >= close[2] and b1 > b2
+pierce = bear2 and bull1 and open[1] <= low[2] and close[1] > (open[2] + close[2]) * 0.5 and close[1] < open[2]
+darkC = bull2 and bear1 and open[1] >= high[2] and close[1] < (open[2] + close[2]) * 0.5 and close[1] > open[2]
+twzBot = math.abs(low[1] - low[2]) <= atrW * 0.12 and wd1 >= atrW * 0.22 and wd2 >= atrW * 0.16
+twzTop = math.abs(high[1] - high[2]) <= atrW * 0.12 and wu1 >= atrW * 0.22 and wu2 >= atrW * 0.16
+harB = bear2 and bull1 and high[1] < high[2] and low[1] > low[2] and b1 < b2 * 0.75
+harS = bull2 and bear1 and high[1] < high[2] and low[1] > low[2] and b1 < b2 * 0.75
+insideBar = high[1] < high[2] and low[1] > low[2] and not harB and not harS
+hammer1 = wd1 >= b1 * 1.7 and wd1 >= atrW * 0.40 and wu1 <= b1 * 0.7 and pos1 >= 0.55
+star1 = wu1 >= b1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= b1 * 0.7 and pos1 <= 0.45
+hangMan = hammer1 and isLongFib
+invHam = wu1 >= b1 * 1.7 and wu1 >= atrW * 0.40 and wd1 <= b1 * 0.6 and pos1 >= 0.45 and isShortFib and not star1
+doji1 = b1 <= r1 * 0.28 and r1 >= atrW * 0.45
+dragDoji = doji1 and wd1 >= r1 * 0.58 and wu1 <= r1 * 0.14
+gravDoji = doji1 and wu1 >= r1 * 0.58 and wd1 <= r1 * 0.14
+longDoji = doji1 and wd1 >= r1 * 0.28 and wu1 >= r1 * 0.28
+spinTop = b1 <= r1 * 0.40 and wd1 >= b1 * 0.5 and wu1 >= b1 * 0.5 and r1 >= atrW * 0.35 and not doji1
+maruUp = bull1 and b1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
+maruDn = bear1 and b1 >= atrW * 0.45 and wd1 < atrW * 0.18 and wu1 < atrW * 0.18
+sweepLo = not na(lastL) and low[1] < lastL and close[1] > lastL
+sweepHi = not na(lastH) and high[1] > lastH and close[1] < lastH
+atAv1 = not na(avwap[1]) and low[1] <= avwap[1] and high[1] >= avwap[1]
+atGold1 = inGold[1] or (not na(lv382) and not na(lv618) and low[1] <= math.max(lv382, lv618) and high[1] >= math.min(lv382, lv618))
+pinLo = hammer1
+pinHi = star1
+formingLo = not barstate.isconfirmed and dnW >= atrW * 0.50 and dnW >= body * 1.5
+formingHi = not barstate.isconfirmed and upW >= atrW * 0.50 and upW >= body * 1.5
+nearNews60 = nearestLeft <= 60
+locTag = atGold1 ? " على ذهبية" : atAv1 ? " على VWAP" : ""
+candleTxt = "لا نمط شمعة | محايد"
+candleCol = color.gray
+if mornStar
+    candleTxt := "نجمة صباح | 3 شموع انعكاس | صعود"
+    candleCol := color.lime
+else if evenStar
+    candleTxt := "نجمة مساء | 3 شموع انعكاس | هبوط"
+    candleCol := color.red
+else if soldiers
+    candleTxt := "3 جنود | استمرار شراء | صعود"
+    candleCol := color.lime
+else if crows
+    candleTxt := "3 غربان | استمرار بيع | هبوط"
+    candleCol := color.red
+else if bullEngC
+    candleTxt := "ابتلاع شرائي | المشترون غطوا البيع" + locTag + " | " + (isShortFib ? "صعود قصير" : "صعود")
+    candleCol := color.lime
+else if bearEngC
+    candleTxt := "ابتلاع بيعي | البائعون غطوا الشراء" + locTag + " | " + (isLongFib ? "هبوط قصير" : "هبوط")
+    candleCol := color.red
+else if pierce
+    candleTxt := "اختراق | إغلاق في نصف شمعة البيع | " + (isShortFib ? "صعود قصير" : "صعود")
+    candleCol := color.lime
+else if darkC
+    candleTxt := "سحابة سوداء | إغلاق في نصف شمعة الشراء | " + (isLongFib ? "هبوط قصير" : "هبوط")
+    candleCol := color.red
+else if harB
+    candleTxt := "هارامي شرائي | ضعف البيع داخل الشمعة | صعود قصير"
+    candleCol := color.orange
+else if harS
+    candleTxt := "هارامي بيعي | ضعف الشراء داخل الشمعة | هبوط قصير"
+    candleCol := color.orange
+else if insideBar
+    candleTxt := "شمعة داخلية | ضغط — انتظر كسر | محايد"
+    candleCol := color.orange
+else if maruUp
+    candleTxt := "ماروبوزو صاعد | شراء بلا ذيل | صعود"
+    candleCol := color.lime
+else if maruDn
+    candleTxt := "ماروبوزو هابط | بيع بلا ذيل | هبوط"
+    candleCol := color.red
+else if spinTop
+    candleTxt := "دوامة" + locTag + " | جسم صغير وذيول | محايد"
+    candleCol := color.orange
+else if longDoji
+    candleTxt := "دوجي أرجل" + locTag + " | تردد قوي | محايد"
+    candleCol := color.orange
+else if doji1
+    candleTxt := "دوجي" + locTag + " | تردد — انتظر التالية | محايد"
+    candleCol := color.orange
+
+wickTxt = "لا ذيل معتبر | محايد"
+wickCol = color.gray
+wickBias = "محايد"
+if sweepLo and (hammer1 or pos1 >= 0.55)
+    wickTxt := "مطرقة صيد قاع" + locTag + " | سيولة تحت اتشالت"
+    wickCol := color.lime
+    wickBias := isShortFib ? "صعود قصير" : "صعود"
+else if sweepHi and (star1 or pos1 <= 0.45)
+    wickTxt := "نجم صيد قمة" + locTag + " | سيولة فوق اتشالت"
+    wickCol := color.red
+    wickBias := isLongFib ? "هبوط قصير" : "هبوط"
+else if twzBot
+    wickTxt := "ملاقط قاع | قاعين متساويين"
+    wickCol := color.lime
+    wickBias := isShortFib ? "صعود قصير" : "صعود"
+else if twzTop
+    wickTxt := "ملاقط قمة | قمتين متساويتين"
+    wickCol := color.red
+    wickBias := isLongFib ? "هبوط قصير" : "هبوط"
+else if hangMan
+    wickTxt := "رجل مشنوق" + locTag + " | مطرقة بعد صعود"
+    wickCol := color.orange
+    wickBias := "هبوط قصير"
+else if invHam
+    wickTxt := "مطرقة مقلوبة" + locTag + " | ذيل علوي بعد هبوط"
+    wickCol := color.orange
+    wickBias := "صعود قصير"
+else if hammer1
+    wickTxt := "مطرقة" + locTag + " | مشترين رفضوا القاع"
+    wickCol := color.lime
+    wickBias := isShortFib ? "صعود قصير" : "صعود"
+else if star1
+    wickTxt := "نجم هابط" + locTag + " | بائعين رفضوا القمة"
+    wickCol := color.red
+    wickBias := isLongFib ? "هبوط قصير" : "هبوط"
+else if dragDoji
+    wickTxt := "يعسوب" + locTag + " | دوجي ذيل سفلي"
+    wickCol := color.lime
+    wickBias := isShortFib ? "صعود قصير" : "صعود"
+else if gravDoji
+    wickTxt := "شاهد قبر" + locTag + " | دوجي ذيل علوي"
+    wickCol := color.red
+    wickBias := isLongFib ? "هبوط قصير" : "هبوط"
+else if formingLo
+    wickTxt := "ذيل سفلي يتشكل | لا تتصرف قبل الإغلاق"
+    wickCol := color.orange
+    wickBias := "صعود قصير"
+else if formingHi
+    wickTxt := "ذيل علوي يتشكل | لا تتصرف قبل الإغلاق"
+    wickCol := color.orange
+    wickBias := "هبوط قصير"
+else if bounceGoldS or bounceAvS or bounceTlS
+    wickTxt := "رفض من المقاومة | بائعين على المستوى"
+    wickCol := color.red
+    wickBias := "هبوط"
+else if bounceGoldL or bounceAvL or bounceTlL
+    wickTxt := "رفض من الدعم | مشترين على المستوى"
+    wickCol := color.lime
+    wickBias := "صعود"
+wickTxt := wickTxt + " | " + wickBias
+if nearNews60 and wickBias != "محايد"
+    wickTxt := wickTxt + " · خبر قريب"
+if nearNews60 and candleTxt != "لا نمط شمعة | محايد"
+    candleTxt := candleTxt + " · خبر قريب"
+
+// ══════════════════════════════════════════════════════════════
+// التوصية: دخول من المنطقة الذهبية فقط — لا مطاردة القمة
+// ══════════════════════════════════════════════════════════════
+pullBuy  = isLongFib and legOk and (inGold or inShallow)
+pullSell = isShortFib and legOk and (inGold or inShallow)
+contBuy  = isLongFib and legOk and atEnd and bullPat and strongVol and aboveAv and not extended
+contSell = isShortFib and legOk and atEnd and bearPat and strongVol and not aboveAv and not extended
+
+scoreB = 0
+scoreS = 0
+if pullBuy
+    scoreB += 3
+if pullSell
+    scoreS += 3
+if inGold and isLongFib
+    scoreB += 2
+if inGold and isShortFib
+    scoreS += 2
+if aboveAv and isLongFib
+    scoreB += 1
+if not aboveAv and isShortFib
+    scoreS += 1
+if bullPat
+    scoreB += 1
+if bearPat
+    scoreS += 1
+if aboveTL and isLongFib
+    scoreB += 1
+if not aboveTL and isShortFib and not na(tlNow)
+    scoreS += 1
+if nearPoc and isLongFib
+    scoreB += 1
+if nearPoc and isShortFib
+    scoreS += 1
+if contBuy
+    scoreB += 2
+if contSell
+    scoreS += 2
+
+raw = "انتظار"
+if (pullBuy or contBuy) and scoreB >= 4 and scoreB > scoreS
+    raw := "شراء"
+else if (pullSell or contSell) and scoreS >= 4 and scoreS > scoreB
+    raw := "بيع"
+
+peakLive = legOk and ((isLongFib and hiOff >= -2) or (isShortFib and loOff >= -2))
+peakHold = atEnd and not peakLive
+
+holdNeed = timeframe.in_seconds() >= 900 ? 1 : 3
+weakLong  = lostStart or isShortFib
+weakShort = lostStart or isLongFib
+
+var string rec = "انتظار"
+var int hold = 0
+if raw == "شراء" or raw == "بيع"
+    rec := raw
+    hold := 0
+else
+    exiting = (rec == "شراء" and weakLong) or (rec == "بيع" and weakShort)
+    if exiting
+        rec := "انتظار"
+        hold := 0
+    else
+        hold += 1
+        if hold >= holdNeed
+            rec := "انتظار"
+
+hasTrade = rec == "شراء" or rec == "بيع"
+newBuy  = rec == "شراء" and rec[1] != "شراء"
+newSell = rec == "بيع"  and rec[1] != "بيع"
+recCol = rec == "شراء" ? color.lime : rec == "بيع" ? color.red : color.gray
+
+entryP = lv618
+slP    = isLongFib ? lv000 - atr * 0.2 : lv000 + atr * 0.2
+tpP    = lv127
+
+advice = "—"
+adviceCol = color.gray
+if rec == "شراء"
+    advice := inGold ? "أفضل دخول | هدف امتداد 1" : inShallow ? "تصحيح بسيط | دخول" : peakLive ? "القمة تتحرك | امتداد" : "زخم مع الموجة"
+    adviceCol := color.lime
+else if rec == "بيع"
+    advice := inGold ? "أفضل دخول | هدف امتداد 1" : inShallow ? "تصحيح بسيط | دخول" : peakLive ? "القاع يتحرك | امتداد" : "زخم مع الموجة"
+    adviceCol := color.red
+else if lostStart
+    advice := "كسر الوقف | انتظر موجة جديدة"
+    adviceCol := color.red
+else if peakLive and isLongFib
+    advice := bullPat and strongVol ? "قمة تتحرك | امتداد نحو جني الربح" : "قمة حتى الآن | تراجع أو امتداد"
+    adviceCol := bullPat and strongVol ? color.lime : color.orange
+else if peakLive and isShortFib
+    advice := bearPat and strongVol ? "قاع يتحرك | امتداد نحو جني الربح" : "قاع حتى الآن | ارتداد أو امتداد"
+    adviceCol := bearPat and strongVol ? color.red : color.orange
+else if atEnd
+    advice := isLongFib ? "قمة مستقرة | انتظر أفضل دخول" : "قاع مستقر | انتظر أفضل دخول"
+    adviceCol := color.orange
+else if inGold
+    advice := "في أفضل دخول | بانتظار تأكيد"
+    adviceCol := color.yellow
+else if legOk
+    advice := isLongFib ? "موجة صاعدة | انتظر أفضل دخول" : "موجة هابطة | انتظر أفضل دخول"
+    adviceCol := color.gray
+
+mxPosLong = mxEntry > 0 and mxCont > 0 and mxSide == "شراء"
+mxPosShort = mxEntry > 0 and mxCont > 0 and mxSide == "بيع"
+if mxPosLong and rec == "بيع"
+    advice := pinHi ? "لونج ضد الموجة | نجم رفض — لا تضيف، جني الارتداد" : pinLo or sweepLo ? "مطرقة تدعم لونجك | جني عند الرفض — لا زيادة" : "لونج ضد الموجة | الارتداد للخروج"
+    adviceCol := color.orange
+else if mxPosShort and rec == "شراء"
+    advice := pinLo ? "شورت ضد الموجة | مطرقة رفض — لا تضيف، جني التصحيح" : pinHi or sweepHi ? "نجم يدعم شورك | جني عند الرفض — لا زيادة" : "شورت ضد الموجة | التصحيح للخروج"
+    adviceCol := color.orange
+else if rec == "انتظار"
+    if sweepLo
+        advice := "مطرقة صيد قاع | انتظر تأكيد فوق الذيل ثم تدفق"
+        adviceCol := color.orange
+    else if sweepHi
+        advice := "نجم صيد قمة | انتظر تأكيد تحت الذيل ثم تدفق"
+        adviceCol := color.orange
+    else if pinLo and isShortFib
+        advice := "مطرقة ضد الهبوط | ارتداد قصير — مو عكس الموجة"
+        adviceCol := color.orange
+    else if pinHi and isLongFib
+        advice := "نجم ضد الصعود | تصحيح قصير — مو عكس الموجة"
+        adviceCol := color.orange
+
+fibText = not legOk ? "لا موجة كافية" : isLongFib ? (peakLive ? "لونج | القمة تتحرك" : "لونج | قمة حتى الآن") : (peakLive ? "شورت | القاع يتحرك" : "شورت | قاع حتى الآن")
+fibCol  = not legOk ? color.gray : isLongFib ? color.lime : color.red
+goldText = inGold ? "الآن في أفضل دخول" : inShallow ? "تصحيح بسيط" : peakLive ? (isLongFib ? "القمة تتحرك الآن" : "القاع يتحرك الآن") : atEnd ? "عند القمة/القاع حتى الآن" : close < lv236 and isLongFib ? "قرب الوقف" : close > lv236 and isShortFib ? "قرب الوقف" : "خارج منطقة الدخول"
+goldCol  = inGold ? color.lime : inShallow ? color.yellow : peakLive ? color.orange : color.gray
+avText = na(avwap) ? "—" : aboveAv ? "فوق | تدفق شراء" : "تحت | تدفق بيع"
+avCol  = na(avwap) ? color.gray : aboveAv ? color.lime : color.red
+tlText = tlUp ? "قاعين صاعدين | دعم" : tlDn ? "قمتين هابطتين | مقاومة" : "لا خط واضح"
+tlCol  = tlUp ? color.lime : tlDn ? color.red : color.gray
+pocText = na(poc) ? "—" : nearPoc ? "عند POC" : close > poc ? "فوق POC" : "تحت POC"
+pocCol  = na(poc) ? color.gray : nearPoc ? color.yellow : close > poc ? color.lime : color.red
+posText = hasTrade ? (rec == "شراء" ? "لونج نشط" : "شورت نشط") : "لا صفقة"
+posCol  = hasTrade ? recCol : color.gray
+
+mxQtyUse = mxCont * mxContSz
+mxOpen = mxEntry > 0 and mxCont > 0 and mxMargin > 0 and mxLev >= 1
+mxLong = mxSide == "شراء"
+mxMark = math.round(close * 100.0) / 100.0
+mxPnl = mxOpen ? (mxLong ? (mxMark - mxEntry) : (mxEntry - mxMark)) * mxQtyUse : 0.0
+mxMmr = mxMMR / 100.0
+mxNotional = mxQtyUse * mxEntry
+mxQtyBad = mxOpen and mxNotional > 0 and mxMargin > mxNotional
+mxIMR = mxOpen and mxNotional > 0 ? math.min(mxMargin / mxNotional, 0.90) : 1.0 / mxLev
+mxLiq = mxOpen and not mxQtyBad ? (mxLong ? mxEntry * (1.0 - mxIMR + mxMmr) : mxEntry * (1.0 + mxIMR - mxMmr)) : na
+mxSideTxt = mxOpen ? ((mxLong ? "لونج " : "شورت ") + str.tostring(mxLev, "#") + "x · " + str.tostring(mxCont) + " Cont") : "لا صفقة"
+mxPnlTxt = (mxPnl >= 0 ? "+" : "") + str.tostring(mxPnl, "#.##")
+mxLiqTxt = mxOpen and not na(mxLiq) ? str.tostring(mxLiq, "#.##") : "—"
+mxInitMar = mxOpen ? mxNotional / mxLev : 0.0
+mxRoi = mxInitMar > 0 ? mxPnl / mxInitMar * 100.0 : 0.0
+mxPnlCol = not mxOpen ? color.gray : mxQtyBad ? color.orange : mxPnl > 0 ? color.lime : mxPnl < 0 ? color.red : color.gray
+mxSideCol = not mxOpen ? color.gray : mxQtyBad ? color.orange : mxLong ? color.lime : color.red
+mxPnlLiqTxt = not mxOpen ? "—" : mxQtyBad ? "الكمية Cont غلط — اكتب Size(Cont) بدون فاصلة مثل 5753" : mxPnlTxt + " @" + str.tostring(mxMark, "#.##") + " | تصفية " + mxLiqTxt
+newsNearTxt = nearestCD + " | " + newsStatus
+newsDirRngTxt = newsDirTxt + "  " + pxTxt
+newsMixTxt = newsPricedTxt + " | " + statTxt
+tblSz = size.small
+
+// ══════════════════════════════════════════════════════════════
+// الرسم
+// ══════════════════════════════════════════════════════════════
+f_killLines(arr) =>
+    sz = array.size(arr)
+    if sz > 0
+        for i = 0 to sz - 1
+            line.delete(array.get(arr, i))
+        array.clear(arr)
+
+f_killLabs(arr) =>
+    sz = array.size(arr)
+    if sz > 0
+        for i = 0 to sz - 1
+            label.delete(array.get(arr, i))
+        array.clear(arr)
+
+f_killBox(arr) =>
+    sz = array.size(arr)
+    if sz > 0
+        for i = 0 to sz - 1
+            box.delete(array.get(arr, i))
+        array.clear(arr)
+
+f_fibLine(x1, y, col, w, sty, arr) =>
+    array.push(arr, line.new(x1, y, bar_index + 4, y, xloc=xloc.bar_index, extend=extend.right, color=col, width=w, style=sty))
+
+f_fibLab(x, y, txt, col, arr) =>
+    array.push(arr, label.new(x, y, txt, xloc=xloc.bar_index, style=label.style_none, color=color.new(color.black, 100), textcolor=col, size=size.normal, textalign=text.align_left))
+
+var array<line>  fibLn = array.new<line>()
+var array<label> fibLb = array.new<label>()
+var array<box>   fibBx = array.new<box>()
+var array<line>  extra = array.new<line>()
+var array<label> extraLb = array.new<label>()
+
+if barstate.islast
+    f_killLines(fibLn)
+    f_killLabs(fibLb)
+    f_killBox(fibBx)
+    f_killLines(extra)
+    f_killLabs(extraLb)
+
+    if showFib and legOk
+        x1 = math.max(0, b0)
+        f_fibLine(x1, lv000, color.new(#787B86, 0), 2, line.style_solid, fibLn)
+        f_fibLine(x1, lv236, color.new(#F23645, 20), 1, line.style_dashed, fibLn)
+        f_fibLine(x1, lv382, color.new(#FF9800, 10), 1, line.style_dashed, fibLn)
+        f_fibLine(x1, lv500, color.new(#787B86, 0), 1, line.style_solid, fibLn)
+        f_fibLine(x1, lv618, color.new(#089981, 0), 2, line.style_solid, fibLn)
+        f_fibLine(x1, lv786, color.new(#26C6DA, 10), 1, line.style_dashed, fibLn)
+        f_fibLine(x1, lv100, color.new(#FFD54F, 0), 2, line.style_solid, fibLn)
+
+        f_fibLab(bar_index, lv236, "نزل زيادة لا تدخل", #FF5252, fibLb)
+        f_fibLab(bar_index, lv618, "أفضل دخول", #00E676, fibLb)
+        f_fibLab(bar_index, lv100, isLongFib ? "القمة حتى الآن" : "القاع حتى الآن", #FFD54F, fibLb)
+
+        if hasTrade
+            f_fibLine(x1, lv127, color.new(#2962FF, 0), 1, line.style_dotted, fibLn)
+            f_fibLine(x1, lv162, color.new(#AB47BC, 0), 1, line.style_dotted, fibLn)
+            f_fibLab(bar_index, lv127, "امتداد 1", #448AFF, fibLb)
+            f_fibLab(bar_index, lv162, "امتداد 2", #E040FB, fibLb)
+
+        if showGold
+            hiG = math.max(lv500, lv618)
+            loG = math.min(lv500, lv618)
+            array.push(fibBx, box.new(x1, hiG, bar_index + 8, loG, xloc=xloc.bar_index, bgcolor=color.new(#00E676, 88), border_color=color.new(#00E676, 55), border_width=1))
+
+        array.push(fibLn, line.new(x1, lv000, math.max(x1 + 1, b1), lv100, xloc=xloc.bar_index, color=color.new(isLongFib ? color.lime : color.red, 45), width=1, style=line.style_dotted))
+
+    if showAvwap and not na(avwap) and legOk
+        array.push(extra, line.new(math.max(0, b0), avwap, bar_index + 4, avwap, extend=extend.right, color=color.new(#AB47BC, 0), width=2))
+        array.push(extraLb, label.new(bar_index, avwap, "متوسط الحجم", style=label.style_none, color=color.new(color.black, 100), textcolor=#CE93D8, size=size.small))
+
+    if showPoc and not na(poc) and legOk
+        array.push(extra, line.new(math.max(0, b0), poc, bar_index + 4, poc, extend=extend.right, color=color.new(#FFD54F, 0), width=1, style=line.style_dashed))
+
+    if showTL and tlUp
+        array.push(extra, line.new(prevLB, prevL, lastLB, lastL, extend=extend.right, color=color.new(#26A69A, 0), width=2))
+    if showTL and tlDn
+        array.push(extra, line.new(prevHB, prevH, lastHB, lastH, extend=extend.right, color=color.new(#EF5350, 0), width=2))
+
+    if showPos and hasTrade
+        eCol = rec == "شراء" ? color.new(#00ACC1, 0) : color.new(#FF8A65, 0)
+        array.push(extra, line.new(bar_index - 4, entryP, bar_index + 6, entryP, color=eCol, width=2))
+        array.push(extra, line.new(bar_index - 4, slP, bar_index + 6, slP, color=color.new(#EF5350, 0), width=2, style=line.style_dashed))
+        array.push(extra, line.new(bar_index - 4, tpP, bar_index + 6, tpP, color=color.new(#66BB6A, 0), width=2, style=line.style_dashed))
+        hiB = math.max(entryP, tpP)
+        loB = math.min(entryP, tpP)
+        array.push(fibBx, box.new(bar_index - 4, hiB, bar_index + 6, loB, bgcolor=color.new(rec == "شراء" ? #26A69A : #EF5350, 90), border_color=color.new(color.white, 80), border_width=1))
+
+bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
+
+var table t = table.new(position.top_right, 2, 19, border_width=1)
+
+if showTable and barstate.islast
+    table.clear(t, 0, 0, 1, 18)
+    table.cell(t, 0, 0, "MEXC Structure v2.38", bgcolor=color.blue, text_color=color.white, text_size=tblSz)
+    table.cell(t, 1, 0, "SOL", bgcolor=color.blue, text_color=color.yellow, text_size=tblSz)
+    table.cell(t, 0, 1, "التوصية", bgcolor=color.new(recCol, 20), text_size=tblSz)
+    table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=tblSz)
+    table.cell(t, 0, 2, "نصيحة", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 2, advice, text_color=adviceCol, text_size=tblSz)
+    table.cell(t, 0, 3, "صفقة MEXC", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 3, mxSideTxt, text_color=mxSideCol, text_size=tblSz)
+    table.cell(t, 0, 4, "الربح", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 4, mxPnlLiqTxt, text_color=mxPnlCol, text_size=tblSz)
+    table.cell(t, 0, 5, "تدفق كبير", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 5, whaleTxt, text_color=whaleCol, text_size=tblSz)
+    table.cell(t, 0, 6, "فيبو / ذهبية", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 6, fibText + " | " + goldText, text_color=fibCol, text_size=tblSz)
+    table.cell(t, 0, 7, "VWAP / POC", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 7, avText + " | " + pocText, text_color=avCol, text_size=tblSz)
+    table.cell(t, 0, 8, "نمط / اتجاه", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 8, patText + " | " + tlText, text_color=patCol, text_size=tblSz)
+    table.cell(t, 0, 9, "منطقة", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 9, zoneTxt, text_color=zoneCol, text_size=tblSz)
+    table.cell(t, 0, 10, "شمعات", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 10, candleTxt, text_color=candleCol, text_size=tblSz)
+    table.cell(t, 0, 11, "ذيول", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 11, wickTxt, text_color=wickCol, text_size=tblSz)
+    table.cell(t, 0, 12, "الوقت", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 12, timeStr, text_size=tblSz)
+    table.cell(t, 0, 13, "الجلسة", bgcolor=color.gray, text_size=tblSz)
+    table.cell(t, 1, 13, sessTxt, text_color=sessCol, text_size=tblSz)
+    table.cell(t, 0, 14, "أقرب خبر", bgcolor=color.new(#37474F, 0), text_color=color.white, text_size=tblSz)
+    table.cell(t, 1, 14, newsNearTxt, bgcolor=color.new(#37474F, 0), text_color=newsCol, text_size=tblSz)
+    if newsPanel
+        table.cell(t, 0, 15, "اتجاه الخبر", bgcolor=color.gray, text_size=tblSz)
+        table.cell(t, 1, 15, newsDirRngTxt, text_color=newsDirCol, text_size=tblSz)
+        table.cell(t, 0, 16, "نتيجة الخبر", bgcolor=color.gray, text_size=tblSz)
+        table.cell(t, 1, 16, newsResTxt, text_color=newsResCol, text_size=tblSz)
+        table.cell(t, 0, 17, "تسعير SOL", bgcolor=color.gray, text_size=tblSz)
+        table.cell(t, 1, 17, newsMixTxt, text_color=statCol, text_size=tblSz)
+
+alertcondition(newBuy,  "شراء", "شراء – MEXC Structure")
+alertcondition(newSell, "بيع",  "بيع – MEXC Structure")
+alertcondition(isHighImpact and not isHighImpact[1], "خبر", "نافذة أخبار")
+alertcondition(approaching and not approaching[1], "اقتراب", "خبر خلال 12 د")
