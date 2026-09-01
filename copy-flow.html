@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Structure v2.39</title>
+<title>Flow v7.23</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,25 +14,24 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Structure v2.39</h1>
+<h1>Flow v7.23</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Structure – Fib v2.39&quot;, overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
+indicator(&quot;MEXC Flow – 5m/15m v7.23&quot;, overlay=true, max_lines_count=15)
 
 // ══════════════════════════════════════════════════════════════
-// الإعدادات
+// الإعدادات  (كما هي)
 // ══════════════════════════════════════════════════════════════
-fibLookIn  = input.int(0, &quot;مدى الفيبو (0=تلقائي)&quot;, minval=0, maxval=200)
-swingLen   = input.int(5, &quot;حساسية خط الاتجاه&quot;, minval=3, maxval=20)
-minAtrMult = input.float(0.8, &quot;أقل طول للموجة (ATR)&quot;, minval=0.3, step=0.1)
-showFib    = input.bool(true, &quot;رسم فيبوناتشي&quot;)
-showGold   = input.bool(true, &quot;تظليل المنطقة الذهبية&quot;)
-showAvwap  = input.bool(true, &quot;VWAP مثبت على الموجة&quot;)
-showTL     = input.bool(true, &quot;خط الاتجاه&quot;)
-showPoc    = input.bool(true, &quot;POC بروفايل الموجة&quot;)
-showPos    = input.bool(true, &quot;مراكز الصفقة&quot;)
+emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
+emaSlowLen = input.int(13, &quot;EMA بطيء&quot;, minval=8)
+rsiLen     = input.int(7,  &quot;RSI Length&quot;, minval=5, maxval=14)
+bbLen      = input.int(20, &quot;Bollinger Length&quot;)
+bbMult     = input.float(2.0, &quot;Bollinger Mult&quot;)
+volLen     = input.int(20, &quot;Volume SMA&quot;)
 showTable  = input.bool(true, &quot;إظهار الجدول&quot;)
+showLevels = input.bool(true, &quot;خطوط المراكز&quot;)
+showVwap   = input.bool(true, &quot;خط VWAP&quot;)
 
 grpMx = &quot;صفقة MEXC — انسخ Size(Cont)&quot;
 mxSide   = input.string(&quot;شراء&quot;, &quot;الاتجاه&quot;, options=[&quot;شراء&quot;, &quot;بيع&quot;], group=grpMx)
@@ -474,62 +473,398 @@ f_nearBar(ts) =&gt;
 approachingBar = f_nearBar(nearestTs) or (isThuBar and hBar == 8 and mBar &gt;= 18 and mBar &lt; 28)
 
 // ══════════════════════════════════════════════════════════════
-// فيبو تلقائي مواكب — مثل Auto Fib في TradingView
-// الطرف الأحدث يحدد الاتجاه: قمة أحدث = لونج | قاع أحدث = شورت
-// 1.0 يتحرك مع السعر الحي فلا ينقلب الاتجاه أثناء الصعود
+// أدوات الهدف
 // ══════════════════════════════════════════════════════════════
-atr = ta.atr(14)
-lookback = fibLookIn &gt; 0 ? fibLookIn : (timeframe.in_seconds() &gt;= 900 ? 36 : 56)
+f_step(p) =&gt;
+    p &gt;= 200 ? 1.0 : p &gt;= 50 ? 0.5 : 0.1
 
-hiOff = ta.highestbars(high, lookback)
-loOff = ta.lowestbars(low, lookback)
-swingH = ta.highest(high, lookback)
-swingL = ta.lowest(low, lookback)
-swingHB = bar_index + hiOff
-swingLB = bar_index + loOff
+f_roundUp(p) =&gt;
+    s = f_step(p)
+    math.ceil((p + s * 0.02) / s) * s
 
-haveSwing = not na(swingH) and not na(swingL) and swingH != swingL
-isLongFib = haveSwing and hiOff &gt; loOff
-isShortFib = haveSwing and loOff &gt; hiOff
-rng = haveSwing ? math.abs(swingH - swingL) : 0.0
-legOk = haveSwing and rng &gt;= atr * minAtrMult
+f_roundDn(p) =&gt;
+    s = f_step(p)
+    math.floor((p - s * 0.02) / s) * s
 
-p0 = isLongFib ? swingL : swingH
-p1 = isLongFib ? swingH : swingL
-b0 = isLongFib ? swingLB : swingHB
-b1 = isLongFib ? swingHB : swingLB
+f_tpLong(entry, sl, swing, band, vw, aligned, impulseOn, atr0) =&gt;
+    risk = math.max(entry - sl, atr0 * 0.35)
+    rMult = aligned and impulseOn ? 2.2 : aligned or impulseOn ? 1.7 : 1.4
+    base = entry + risk * rMult
+    minP = entry + math.max(risk * 1.25, atr0 * 0.8)
+    maxP = entry + math.max(risk * 2.8, atr0 * 2.4)
+    float best = math.min(math.max(base, minP), maxP)
+    float bestD = 1.0e10
+    if not na(swing) and swing &gt;= minP and swing &lt;= maxP
+        d = math.abs(swing - base)
+        if d &lt; bestD
+            best := swing
+            bestD := d
+    if not na(band) and band &gt;= minP and band &lt;= maxP
+        d = math.abs(band - base)
+        if d &lt; bestD
+            best := band
+            bestD := d
+    vwM = not na(vw) and vw &gt; entry ? vw : na
+    if not na(vwM) and vwM &gt;= minP and vwM &lt;= maxP
+        d = math.abs(vwM - base)
+        if d &lt; bestD
+            best := vwM
+            bestD := d
+    rd = f_roundUp(minP)
+    if rd &gt;= minP and rd &lt;= maxP
+        d = math.abs(rd - base)
+        if d &lt; bestD
+            best := rd
+            bestD := d
+    best
 
-f_lv(r) =&gt; p0 + (p1 - p0) * r
-lv000 = f_lv(0.0)
-lv236 = f_lv(0.236)
-lv382 = f_lv(0.382)
-lv500 = f_lv(0.5)
-lv618 = f_lv(0.618)
-lv786 = f_lv(0.786)
-lv100 = f_lv(1.0)
-lv127 = f_lv(1.272)
-lv162 = f_lv(1.618)
+f_tpShort(entry, sl, swing, band, vw, aligned, impulseOn, atr0) =&gt;
+    risk = math.max(sl - entry, atr0 * 0.35)
+    rMult = aligned and impulseOn ? 2.2 : aligned or impulseOn ? 1.7 : 1.4
+    base = entry - risk * rMult
+    minP = entry - math.max(risk * 1.25, atr0 * 0.8)
+    maxP = entry - math.max(risk * 2.8, atr0 * 2.4)
+    float best = math.max(math.min(base, minP), maxP)
+    float bestD = 1.0e10
+    if not na(swing) and swing &lt;= minP and swing &gt;= maxP
+        d = math.abs(swing - base)
+        if d &lt; bestD
+            best := swing
+            bestD := d
+    if not na(band) and band &lt;= minP and band &gt;= maxP
+        d = math.abs(band - base)
+        if d &lt; bestD
+            best := band
+            bestD := d
+    vwM = not na(vw) and vw &lt; entry ? vw : na
+    if not na(vwM) and vwM &lt;= minP and vwM &gt;= maxP
+        d = math.abs(vwM - base)
+        if d &lt; bestD
+            best := vwM
+            bestD := d
+    rd = f_roundDn(minP)
+    if rd &lt;= minP and rd &gt;= maxP
+        d = math.abs(rd - base)
+        if d &lt; bestD
+            best := rd
+            bestD := d
+    best
 
-inGold    = legOk and (isLongFib ? (close &lt;= lv618 and close &gt;= lv382) : (close &gt;= lv618 and close &lt;= lv382))
-inShallow = legOk and (isLongFib ? (close &lt;= lv786 and close &gt; lv618) : (close &gt;= lv786 and close &lt; lv618))
-atEnd     = legOk and (isLongFib ? (close &gt;= lv786 and close &lt;= lv100 * 1.002) : (close &lt;= lv786 and close &gt;= lv100 * 0.998))
-lostStart = legOk and (isLongFib ? close &lt; lv000 : close &gt; lv000)
-extended  = legOk and (isLongFib ? high &gt;= lv127 : low &lt;= lv127)
+// أقرب مغناطيس أمام الهدف الحالي فقط (لا أبعد هدف)
+f_nearLong(cur, pad, maxP, px, a, b, c) =&gt;
+    float best = na
+    if not na(a) and a &gt; cur + pad and a &lt;= maxP and a &gt; px
+        best := a
+    if not na(b) and b &gt; cur + pad and b &lt;= maxP and b &gt; px
+        best := na(best) ? b : math.min(best, b)
+    if not na(c) and c &gt; cur + pad and c &lt;= maxP and c &gt; px
+        best := na(best) ? c : math.min(best, c)
+    best
+
+f_nearShort(cur, pad, maxP, px, a, b, c) =&gt;
+    float best = na
+    if not na(a) and a &lt; cur - pad and a &gt;= maxP and a &lt; px
+        best := a
+    if not na(b) and b &lt; cur - pad and b &gt;= maxP and b &lt; px
+        best := na(best) ? b : math.max(best, b)
+    if not na(c) and c &lt; cur - pad and c &gt;= maxP and c &lt; px
+        best := na(best) ? c : math.max(best, c)
+    best
 
 // ══════════════════════════════════════════════════════════════
-// VWAP مثبت + POC من بداية الموجة
+// الأدوات
 // ══════════════════════════════════════════════════════════════
-f_avwap(startB) =&gt;
-    look = math.max(1, math.min(bar_index - startB + 1, 160))
-    float n = 0.0
-    float d = 0.0
-    for i = 0 to look - 1
-        n += hlc3[i] * volume[i]
-        d += volume[i]
-    d &gt; 0 ? n / d : na
+emaFast = ta.ema(close, emaFastLen)
+emaSlow = ta.ema(close, emaSlowLen)
+rsi     = ta.rsi(close, rsiLen)
+[bbMid, bbUpper, bbLower] = ta.bb(close, bbLen, bbMult)
+volSma  = ta.sma(volume, volLen)
+rvol    = volSma &gt; 0 ? volume / volSma : 1.0
+atr     = ta.atr(10)
+vwapVal = ta.vwap(hlc3)
 
-avwap = legOk ? f_avwap(math.max(0, b0)) : na
-aboveAv = not na(avwap) and close &gt; avwap
+emaUp     = emaFast &gt; emaSlow
+emaDn     = emaFast &lt; emaSlow
+aboveFast = close &gt; emaFast
+aboveSlow = close &gt; emaSlow
+strongVol = rvol &gt;= 1.3
+weakVol   = rvol &lt; 0.8
+aboveVwap = close &gt; vwapVal
+
+bullImpulse = close &gt; open and (close - open) &gt;= atr * 0.55
+bearImpulse = close &lt; open and (open - close) &gt;= atr * 0.55
+flowLong    = close &gt; open and (strongVol or bullImpulse)
+flowShort   = close &lt; open and (strongVol or bearImpulse)
+
+newSess = ta.change(time(&quot;D&quot;)) != 0
+var float cvd = 0.0
+if newSess
+    cvd := 0.0
+cvd += close &gt;= open ? volume : -volume
+
+htfTF = timeframe.in_seconds() &lt;= 300 ? &quot;15&quot; : timeframe.in_seconds() &lt;= 1800 ? &quot;60&quot; : &quot;240&quot;
+htfFast = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaFastLen), barmerge.gaps_off, barmerge.lookahead_off)
+htfSlow = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaSlowLen), barmerge.gaps_off, barmerge.lookahead_off)
+htfUp   = htfFast &gt; htfSlow
+htfName = htfTF == &quot;15&quot; ? &quot;15m&quot; : htfTF == &quot;60&quot; ? &quot;1H&quot; : &quot;4H&quot;
+
+ph = ta.pivothigh(high, 4, 4)
+pl = ta.pivotlow(low, 4, 4)
+var float lastPH = na
+var float lastPL = na
+if not na(ph)
+    lastPH := ph
+if not na(pl)
+    lastPL := pl
+
+emaTrend = emaUp ? &quot;صاعد&quot; : &quot;هابط&quot;
+emaCol   = emaUp ? color.lime : color.red
+ema5Up = emaFast &gt; emaFast[1]
+ema5Dn = emaFast &lt; emaFast[1]
+emaFastText = (ema5Up ? &quot;صاعد&quot; : ema5Dn ? &quot;هابط&quot; : &quot;ثابت&quot;) + &quot; | &quot; + (aboveFast ? (emaUp ? &quot;فوق | دعم قوي&quot; : &quot;فوق | دعم ضعيف&quot;) : (emaDn ? &quot;تحت | مقاومة قوية&quot; : &quot;تحت | مقاومة ضعيفة&quot;))
+emaFastCol  = ema5Up ? color.lime : ema5Dn ? color.red : (aboveFast ? color.lime : color.red)
+emaSlowText = aboveSlow ? (emaUp ? &quot;فوق | دعم قوي&quot; : &quot;فوق | دعم ضعيف&quot;) : (emaDn ? &quot;تحت | مقاومة قوية&quot; : &quot;تحت | مقاومة ضعيفة&quot;)
+emaSlowCol  = aboveSlow ? color.lime : color.red
+
+rsiContUp = rsi &gt;= 75 and emaUp and flowLong
+rsiContDn = rsi &lt;= 25 and emaDn and flowShort
+rsiText = rsi &gt; 70 ? (rsiContUp ? &quot;تشبع + استمرار صاعد&quot; : emaUp ? &quot;تشبع مع ترند&quot; : &quot;تشبع | احتمال تصحيح&quot;) : rsi &lt; 30 ? (rsiContDn ? &quot;تشبع + استمرار هابط&quot; : emaDn ? &quot;تشبع بيع مع ترند&quot; : &quot;تشبع بيع | احتمال ارتداد&quot;) : rsi &gt; 55 ? &quot;زخم إيجابي&quot; : rsi &lt; 45 ? &quot;زخم سلبي&quot; : &quot;محايد&quot;
+rsiCol  = rsi &gt; 70 ? (rsiContUp ? color.lime : color.orange) : rsi &lt; 30 ? (rsiContDn ? color.red : color.orange) : rsi &gt; 55 ? color.green : rsi &lt; 45 ? color.maroon : color.gray
+
+rvolText = bullImpulse and strongVol ? &quot;دفعة + حجم | صعود&quot; : bearImpulse and strongVol ? &quot;دفعة + حجم | هبوط&quot; : bullImpulse ? &quot;دفعة سعرية | صعود&quot; : bearImpulse ? &quot;دفعة سعرية | هبوط&quot; : strongVol ? (close &gt; open ? &quot;قوي | يدعم الصعود&quot; : &quot;قوي | يدعم الهبوط&quot;) : weakVol ? &quot;ضعيف | ثقة منخفضة&quot; : &quot;عادي&quot;
+rvolCol  = flowLong ? color.lime : flowShort ? color.red : weakVol ? color.orange : color.gray
+
+bigBuy = rvol &gt;= 2.0 and close &gt; open
+bigSell = rvol &gt;= 2.0 and close &lt; open
+whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;بيع كمية كبيرة&quot; : &quot;عادي&quot;
+whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
+
+wickDn = math.min(close, open) - low
+wickUp = high - math.max(close, open)
+bounceEmaL = emaUp and ema5Up and low &lt;= emaFast and close &gt; emaFast and close &gt; open and wickDn &gt;= atr * 0.15
+bounceEmaS = emaDn and ema5Dn and high &gt;= emaFast and close &lt; emaFast and close &lt; open and wickUp &gt;= atr * 0.15
+bounceVwapL = emaUp and low &lt;= vwapVal and close &gt; vwapVal and close &gt; open and wickDn &gt;= atr * 0.12
+bounceVwapS = emaDn and high &gt;= vwapVal and close &lt; vwapVal and close &lt; open and wickUp &gt;= atr * 0.12
+bounceBbL = emaUp and low &lt;= bbLower and close &gt; bbLower and close &gt; open
+bounceBbS = emaDn and high &gt;= bbUpper and close &lt; bbUpper and close &lt; open
+brkRes = not na(lastPH) and close &gt; lastPH and nz(high[1], lastPH) &lt;= lastPH and (strongVol or bullImpulse)
+brkSup = not na(lastPL) and close &lt; lastPL and nz(low[1], lastPL) &gt;= lastPL and (strongVol or bearImpulse)
+bbBrkUp = close &gt; bbUpper and close[1] &lt;= bbUpper and (strongVol or bullImpulse) and emaUp
+bbBrkDn = close &lt; bbLower and close[1] &gt;= bbLower and (strongVol or bearImpulse) and emaDn
+holdRes = not na(lastPH) and close &gt; lastPH and close[1] &gt; lastPH and emaUp and htfUp
+holdSup = not na(lastPL) and close &lt; lastPL and close[1] &lt; lastPL and emaDn and not htfUp
+zoneTxt = &quot;لا كسر/ارتداد&quot;
+zoneCol = color.gray
+if brkRes or bbBrkUp
+    zoneTxt := &quot;كسر مقاومة | استمرار صعود&quot;
+    zoneCol := color.lime
+else if brkSup or bbBrkDn
+    zoneTxt := &quot;كسر دعم | استمرار هبوط&quot;
+    zoneCol := color.red
+else if holdRes
+    zoneTxt := &quot;فوق المقاومة | استمرار&quot;
+    zoneCol := color.lime
+else if holdSup
+    zoneTxt := &quot;تحت الدعم | استمرار&quot;
+    zoneCol := color.red
+else if bounceEmaL
+    zoneTxt := &quot;ارتداد EMA | صعود&quot;
+    zoneCol := color.lime
+else if bounceEmaS
+    zoneTxt := &quot;ارتداد EMA | هبوط&quot;
+    zoneCol := color.red
+else if bounceVwapL
+    zoneTxt := &quot;ارتداد VWAP | صعود&quot;
+    zoneCol := color.lime
+else if bounceVwapS
+    zoneTxt := &quot;ارتداد VWAP | هبوط&quot;
+    zoneCol := color.red
+else if bounceBbL
+    zoneTxt := &quot;ارتداد بولنجر | صعود&quot;
+    zoneCol := color.lime
+else if bounceBbS
+    zoneTxt := &quot;ارتداد بولنجر | هبوط&quot;
+    zoneCol := color.red
+
+bodyW = math.max(math.abs(close - open), syminfo.mintick)
+atrW = nz(atr, close * 0.01)
+b1 = f_cBody(1)
+b2 = f_cBody(2)
+b3 = f_cBody(3)
+r1 = f_cRng(1)
+r2 = f_cRng(2)
+wd1 = f_cWd(1)
+wu1 = f_cWu(1)
+wd2 = f_cWd(2)
+wu2 = f_cWu(2)
+pos1 = (close[1] - low[1]) / r1
+bull1 = close[1] &gt; open[1]
+bear1 = close[1] &lt; open[1]
+bull2 = close[2] &gt; open[2]
+bear2 = close[2] &lt; open[2]
+bull3 = close[3] &gt; open[3]
+bear3 = close[3] &lt; open[3]
+mornStar = bear3 and b2 &lt;= b3 * 0.55 and bull1 and close[1] &gt; (open[3] + close[3]) * 0.5 and low[2] &lt; math.min(low[3], low[1])
+evenStar = bull3 and b2 &lt;= b3 * 0.55 and bear1 and close[1] &lt; (open[3] + close[3]) * 0.5 and high[2] &gt; math.max(high[3], high[1])
+soldiers = bull1 and bull2 and bull3 and close[1] &gt; close[2] and close[2] &gt; close[3] and wu1 &lt; b1 * 0.5 and wu2 &lt; b2 * 0.5 and b1 &gt;= atrW * 0.22
+crows = bear1 and bear2 and bear3 and close[1] &lt; close[2] and close[2] &lt; close[3] and wd1 &lt; b1 * 0.5 and wd2 &lt; b2 * 0.5 and b1 &gt;= atrW * 0.22
+bullEng = bull1 and bear2 and close[1] &gt;= open[2] and open[1] &lt;= close[2] and b1 &gt; b2
+bearEng = bear1 and bull2 and close[1] &lt;= open[2] and open[1] &gt;= close[2] and b1 &gt; b2
+pierce = bear2 and bull1 and open[1] &lt;= low[2] and close[1] &gt; (open[2] + close[2]) * 0.5 and close[1] &lt; open[2]
+darkC = bull2 and bear1 and open[1] &gt;= high[2] and close[1] &lt; (open[2] + close[2]) * 0.5 and close[1] &gt; open[2]
+twzBot = math.abs(low[1] - low[2]) &lt;= atrW * 0.12 and wd1 &gt;= atrW * 0.22 and wd2 &gt;= atrW * 0.16
+twzTop = math.abs(high[1] - high[2]) &lt;= atrW * 0.12 and wu1 &gt;= atrW * 0.22 and wu2 &gt;= atrW * 0.16
+harB = bear2 and bull1 and high[1] &lt; high[2] and low[1] &gt; low[2] and b1 &lt; b2 * 0.75
+harS = bull2 and bear1 and high[1] &lt; high[2] and low[1] &gt; low[2] and b1 &lt; b2 * 0.75
+insideBar = high[1] &lt; high[2] and low[1] &gt; low[2] and not harB and not harS
+hammer1 = wd1 &gt;= b1 * 1.7 and wd1 &gt;= atrW * 0.40 and wu1 &lt;= b1 * 0.7 and pos1 &gt;= 0.55
+star1 = wu1 &gt;= b1 * 1.7 and wu1 &gt;= atrW * 0.40 and wd1 &lt;= b1 * 0.7 and pos1 &lt;= 0.45
+hangMan = hammer1 and emaUp
+invHam = wu1 &gt;= b1 * 1.7 and wu1 &gt;= atrW * 0.40 and wd1 &lt;= b1 * 0.6 and pos1 &gt;= 0.45 and emaDn and not star1
+doji1 = b1 &lt;= r1 * 0.28 and r1 &gt;= atrW * 0.45
+dragDoji = doji1 and wd1 &gt;= r1 * 0.58 and wu1 &lt;= r1 * 0.14
+gravDoji = doji1 and wu1 &gt;= r1 * 0.58 and wd1 &lt;= r1 * 0.14
+longDoji = doji1 and wd1 &gt;= r1 * 0.28 and wu1 &gt;= r1 * 0.28
+spinTop = b1 &lt;= r1 * 0.40 and wd1 &gt;= b1 * 0.5 and wu1 &gt;= b1 * 0.5 and r1 &gt;= atrW * 0.35 and not doji1
+maruUp = bull1 and b1 &gt;= atrW * 0.45 and wd1 &lt; atrW * 0.18 and wu1 &lt; atrW * 0.18
+maruDn = bear1 and b1 &gt;= atrW * 0.45 and wd1 &lt; atrW * 0.18 and wu1 &lt; atrW * 0.18
+sweepLo = not na(lastPL) and low[1] &lt; lastPL and close[1] &gt; lastPL
+sweepHi = not na(lastPH) and high[1] &gt; lastPH and close[1] &lt; lastPH
+atEma1 = low[1] &lt;= emaFast[1] and high[1] &gt;= emaFast[1]
+atVwap1 = low[1] &lt;= vwapVal[1] and high[1] &gt;= vwapVal[1]
+pinLo = hammer1
+pinHi = star1
+formingLo = not barstate.isconfirmed and wickDn &gt;= atrW * 0.50 and wickDn &gt;= bodyW * 1.5
+formingHi = not barstate.isconfirmed and wickUp &gt;= atrW * 0.50 and wickUp &gt;= bodyW * 1.5
+nearNews60 = nearestLeft &lt;= 60
+locTag = atEma1 ? &quot; على EMA&quot; : atVwap1 ? &quot; على VWAP&quot; : &quot;&quot;
+candleTxt = &quot;لا نمط شمعة | محايد&quot;
+candleCol = color.gray
+if mornStar
+    candleTxt := &quot;نجمة صباح | 3 شموع انعكاس | صعود&quot;
+    candleCol := color.lime
+else if evenStar
+    candleTxt := &quot;نجمة مساء | 3 شموع انعكاس | هبوط&quot;
+    candleCol := color.red
+else if soldiers
+    candleTxt := &quot;3 جنود | استمرار شراء | صعود&quot;
+    candleCol := color.lime
+else if crows
+    candleTxt := &quot;3 غربان | استمرار بيع | هبوط&quot;
+    candleCol := color.red
+else if bullEng
+    candleTxt := &quot;ابتلاع شرائي | المشترون غطوا البيع&quot; + locTag + &quot; | &quot; + (emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;)
+    candleCol := color.lime
+else if bearEng
+    candleTxt := &quot;ابتلاع بيعي | البائعون غطوا الشراء&quot; + locTag + &quot; | &quot; + (emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;)
+    candleCol := color.red
+else if pierce
+    candleTxt := &quot;اختراق | إغلاق في نصف شمعة البيع | &quot; + (emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;)
+    candleCol := color.lime
+else if darkC
+    candleTxt := &quot;سحابة سوداء | إغلاق في نصف شمعة الشراء | &quot; + (emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;)
+    candleCol := color.red
+else if harB
+    candleTxt := &quot;هارامي شرائي | ضعف البيع داخل الشمعة | صعود قصير&quot;
+    candleCol := color.orange
+else if harS
+    candleTxt := &quot;هارامي بيعي | ضعف الشراء داخل الشمعة | هبوط قصير&quot;
+    candleCol := color.orange
+else if insideBar
+    candleTxt := &quot;شمعة داخلية | ضغط — انتظر كسر | محايد&quot;
+    candleCol := color.orange
+else if maruUp
+    candleTxt := &quot;ماروبوزو صاعد | شراء بلا ذيل | صعود&quot;
+    candleCol := color.lime
+else if maruDn
+    candleTxt := &quot;ماروبوزو هابط | بيع بلا ذيل | هبوط&quot;
+    candleCol := color.red
+else if spinTop
+    candleTxt := &quot;دوامة&quot; + locTag + &quot; | جسم صغير وذيول | محايد&quot;
+    candleCol := color.orange
+else if longDoji
+    candleTxt := &quot;دوجي أرجل&quot; + locTag + &quot; | تردد قوي | محايد&quot;
+    candleCol := color.orange
+else if doji1
+    candleTxt := &quot;دوجي&quot; + locTag + &quot; | تردد — انتظر التالية | محايد&quot;
+    candleCol := color.orange
+
+wickTxt = &quot;لا ذيل معتبر | محايد&quot;
+wickCol = color.gray
+wickBias = &quot;محايد&quot;
+if sweepLo and (hammer1 or pos1 &gt;= 0.55)
+    wickTxt := &quot;مطرقة صيد قاع&quot; + locTag + &quot; | سيولة تحت اتشالت&quot;
+    wickCol := color.lime
+    wickBias := emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;
+else if sweepHi and (star1 or pos1 &lt;= 0.45)
+    wickTxt := &quot;نجم صيد قمة&quot; + locTag + &quot; | سيولة فوق اتشالت&quot;
+    wickCol := color.red
+    wickBias := emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
+else if twzBot
+    wickTxt := &quot;ملاقط قاع | قاعين متساويين&quot;
+    wickCol := color.lime
+    wickBias := emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;
+else if twzTop
+    wickTxt := &quot;ملاقط قمة | قمتين متساويتين&quot;
+    wickCol := color.red
+    wickBias := emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
+else if hangMan
+    wickTxt := &quot;رجل مشنوق&quot; + locTag + &quot; | مطرقة بعد صعود&quot;
+    wickCol := color.orange
+    wickBias := &quot;هبوط قصير&quot;
+else if invHam
+    wickTxt := &quot;مطرقة مقلوبة&quot; + locTag + &quot; | ذيل علوي بعد هبوط&quot;
+    wickCol := color.orange
+    wickBias := &quot;صعود قصير&quot;
+else if hammer1
+    wickTxt := &quot;مطرقة&quot; + locTag + &quot; | مشترين رفضوا القاع&quot;
+    wickCol := color.lime
+    wickBias := emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;
+else if star1
+    wickTxt := &quot;نجم هابط&quot; + locTag + &quot; | بائعين رفضوا القمة&quot;
+    wickCol := color.red
+    wickBias := emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
+else if dragDoji
+    wickTxt := &quot;يعسوب&quot; + locTag + &quot; | دوجي ذيل سفلي&quot;
+    wickCol := color.lime
+    wickBias := emaDn ? &quot;صعود قصير&quot; : &quot;صعود&quot;
+else if gravDoji
+    wickTxt := &quot;شاهد قبر&quot; + locTag + &quot; | دوجي ذيل علوي&quot;
+    wickCol := color.red
+    wickBias := emaUp ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
+else if formingLo
+    wickTxt := &quot;ذيل سفلي يتشكل | لا تتصرف قبل الإغلاق&quot;
+    wickCol := color.orange
+    wickBias := &quot;صعود قصير&quot;
+else if formingHi
+    wickTxt := &quot;ذيل علوي يتشكل | لا تتصرف قبل الإغلاق&quot;
+    wickCol := color.orange
+    wickBias := &quot;هبوط قصير&quot;
+else if bounceEmaS
+    wickTxt := &quot;رفض EMA من تحت | بائعين على المقاومة&quot;
+    wickCol := color.red
+    wickBias := &quot;هبوط&quot;
+else if bounceEmaL
+    wickTxt := &quot;رفض EMA من فوق | مشترين على الدعم&quot;
+    wickCol := color.lime
+    wickBias := &quot;صعود&quot;
+wickTxt := wickTxt + &quot; | &quot; + wickBias
+if nearNews60 and wickBias != &quot;محايد&quot;
+    wickTxt := wickTxt + &quot; · خبر قريب&quot;
+if nearNews60 and candleTxt != &quot;لا نمط شمعة | محايد&quot;
+    candleTxt := candleTxt + &quot; · خبر قريب&quot;
+
+bbPos = close &gt; bbUpper ? (flowLong ? &quot;خارج فوق | زخم قوي&quot; : &quot;خارج فوق | احتمال توزيع&quot;) : close &lt; bbLower ? (flowShort ? &quot;خارج تحت | زخم قوي&quot; : &quot;خارج تحت | احتمال ارتداد&quot;) : &quot;داخل النطاق | انتظار&quot;
+bbCol = close &gt; bbUpper ? (flowLong ? color.lime : color.orange) : close &lt; bbLower ? (flowShort ? color.red : color.orange) : color.gray
+
+vwapText = aboveVwap ? &quot;فوق | تدفق شراء&quot; : &quot;تحت | تدفق بيع&quot;
+vwapCol  = aboveVwap ? color.lime : color.red
+
+htfText = htfUp ? &quot;صاعد&quot; : &quot;هابط&quot;
+htfCol  = htfUp ? color.lime : color.red
+
+cvdText = cvd &gt; 0 ? &quot;شراء مسيطر&quot; : cvd &lt; 0 ? &quot;بيع مسيطر&quot; : &quot;متوازن&quot;
+cvdCol  = cvd &gt; 0 ? color.lime : cvd &lt; 0 ? color.red : color.gray
 
 dxyN = request.security(&quot;TVC:DXY&quot;, &quot;1&quot;, close, barmerge.gaps_off, barmerge.lookahead_off)
 dxyP = request.security(&quot;TVC:DXY&quot;, &quot;1&quot;, close[15], barmerge.gaps_off, barmerge.lookahead_off)
@@ -581,8 +916,8 @@ isMajorNewsBar = ((isNfpBar or isCpiBar or isPpiBar or isPceBar or isRetailBar o
 isClaimNewsBar = isThuBar and w0830Bar and not isNfpBar and not isCpiBar and not isPpiBar and not isPceBar
 newsStart = isMajorNewsBar and not isMajorNewsBar[1]
 claimStart = isClaimNewsBar and not isClaimNewsBar[1]
-flowBull = isLongFib and aboveAv
-flowBear = isShortFib and not aboveAv
+flowBull = emaUp and htfUp
+flowBear = emaDn and not htfUp
 var int qBar = na
 var float qAtr = na
 var int qTrend = 0
@@ -646,7 +981,7 @@ pctWith = nEv &gt; 0 ? 100.0 * nWith / nEv : na
 useClaims = nearestTs == tsClaims
 avgUse = useClaims ? (nEvC &gt;= 3 ? avgAbsC : nz(avgAbs, 1.2) * 0.45) : avgAbs
 nShow = useClaims ? nEvC : nEv
-statTxt = nShow &lt; 3 ? &quot;لا يكفي تاريخ سعري&quot; : str.tostring(close - (nShow &gt;= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), &quot;#.##&quot;) + &quot; – &quot; + str.tostring(close + (nShow &gt;= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), &quot;#.##&quot;) + (useClaims ? &quot;&quot; : pctWith &gt;= 60 ? (isLongFib ? &quot; | غالباً صعود&quot; : &quot; | غالباً هبوط&quot;) : pctWith &lt;= 40 ? (isLongFib ? &quot; | غالباً هبوط&quot; : &quot; | غالباً صعود&quot;) : &quot; | اتجاه مختلط&quot;)
+statTxt = nShow &lt; 3 ? &quot;لا يكفي تاريخ سعري&quot; : str.tostring(close - (nShow &gt;= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), &quot;#.##&quot;) + &quot; – &quot; + str.tostring(close + (nShow &gt;= 3 ? avgUse : 1.2) * nz(atr, close * 0.01), &quot;#.##&quot;) + (useClaims ? &quot;&quot; : pctWith &gt;= 60 ? (emaUp ? &quot; | غالباً صعود&quot; : &quot; | غالباً هبوط&quot;) : pctWith &lt;= 40 ? (emaUp ? &quot; | غالباً هبوط&quot; : &quot; | غالباً صعود&quot;) : &quot; | اتجاه مختلط&quot;)
 statCol = nShow &lt; 3 ? color.gray : useClaims ? color.orange : pctWith &gt;= 60 ? color.lime : pctWith &lt;= 40 ? color.red : color.orange
 expCol = usedBias == &quot;تيسير&quot; ? color.lime : usedBias == &quot;تشديد&quot; ? color.red : color.gray
 atrAvg = ta.sma(atr, 20)
@@ -695,354 +1030,47 @@ newsPre = nearestTs &lt; FAR and nearestLeft &lt;= 60
 newsPost = not na(lastFireTs) and (timenow - lastFireTs) &lt;= lastPostMin * 60000
 newsPanel = newsPre or newsPost or isHighImpact
 
-f_poc(startB) =&gt;
-    look = math.max(2, math.min(bar_index - startB + 1, 120))
-    float loP = low
-    float hiP = high
-    for i = 0 to look - 1
-        loP := math.min(loP, low[i])
-        hiP := math.max(hiP, high[i])
-    rngP = math.max(hiP - loP, syminfo.mintick * 10)
-    bins = 16
-    volA = array.new_float(bins, 0.0)
-    for i = 0 to look - 1
-        mid = (high[i] + low[i]) * 0.5
-        b = int(math.min(bins - 1, math.max(0, math.floor((mid - loP) / rngP * bins))))
-        array.set(volA, b, array.get(volA, b) + volume[i])
-    int best = 0
-    float bestV = 0.0
-    for b = 0 to bins - 1
-        v = array.get(volA, b)
-        if v &gt; bestV
-            bestV := v
-            best := b
-    loP + (best + 0.5) / bins * rngP
-
-poc = legOk ? f_poc(math.max(0, b0)) : na
-nearPoc = not na(poc) and math.abs(close - poc) &lt;= atr * 0.35
-
 // ══════════════════════════════════════════════════════════════
-// خط الاتجاه من قيعان/قمم مؤكدة (لا يُحرّك الفيبو)
+// التوصية
 // ══════════════════════════════════════════════════════════════
-ph = ta.pivothigh(high, swingLen, swingLen)
-pl = ta.pivotlow(low, swingLen, swingLen)
-var float lastH = na
-var float lastL = na
-var int   lastHB = na
-var int   lastLB = na
-var float prevH = na
-var float prevL = na
-var int   prevHB = na
-var int   prevLB = na
-if not na(ph)
-    prevH := lastH
-    prevHB := lastHB
-    lastH := ph
-    lastHB := bar_index - swingLen
-if not na(pl)
-    prevL := lastL
-    prevLB := lastLB
-    lastL := pl
-    lastLB := bar_index - swingLen
-
-tlUp = not na(prevL) and not na(lastL) and lastLB != prevLB and lastL &gt;= prevL
-tlDn = not na(prevH) and not na(lastH) and lastHB != prevHB and lastH &lt;= prevH
-
-f_tlPrice(x1, y1, x2, y2, x) =&gt;
-    den = x2 - x1
-    den == 0 ? y2 : y1 + (y2 - y1) * (x - x1) / den
-
-tlNow = tlUp ? f_tlPrice(prevLB, prevL, lastLB, lastL, bar_index) : tlDn ? f_tlPrice(prevHB, prevH, lastHB, lastH, bar_index) : na
-aboveTL = not na(tlNow) and close &gt; tlNow
-
-// ══════════════════════════════════════════════════════════════
-// نمط الشمعة — تأكيد فقط
-// ══════════════════════════════════════════════════════════════
-body = math.abs(close - open)
-upW = high - math.max(close, open)
-dnW = math.min(close, open) - low
-bullEng = close &gt; open and close[1] &lt; open[1] and close &gt;= open[1] and open &lt;= close[1]
-bearEng = close &lt; open and close[1] &gt; open[1] and close &lt;= open[1] and open &gt;= close[1]
-hammer = dnW &gt;= body * 1.8 and upW &lt;= body * 0.45 and close &gt;= open
-star   = upW &gt;= body * 1.8 and dnW &lt;= body * 0.45 and close &lt;= open
-bullPat = bullEng or hammer or (close &gt; open and close &gt; high[1])
-bearPat = bearEng or star or (close &lt; open and close &lt; low[1])
-ema5s = ta.ema(close, 5)
-patText = (bullEng ? &quot;ابتلاع شرائي&quot; : bearEng ? &quot;ابتلاع بيعي&quot; : hammer ? &quot;مطرقة&quot; : star ? &quot;نجم هابط&quot; : bullPat ? &quot;زخم صاعد&quot; : bearPat ? &quot;زخم هابط&quot; : &quot;لا نمط&quot;) + &quot; | EMA5 &quot; + (ema5s &gt; ema5s[1] ? &quot;صاعد&quot; : &quot;هابط&quot;)
-patCol  = bullPat ? color.lime : bearPat ? color.red : color.gray
-
-volSma = ta.sma(volume, 20)
-strongVol = volume &gt;= volSma * 1.25
-rvolSt = volSma &gt; 0 ? volume / volSma : 1.0
-bigBuy = rvolSt &gt;= 2.0 and close &gt; open
-bigSell = rvolSt &gt;= 2.0 and close &lt; open
-whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;بيع كمية كبيرة&quot; : &quot;عادي&quot;
-whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
-
-ema5Up = ema5s &gt; ema5s[1]
-ema5Dn = ema5s &lt; ema5s[1]
-ema5Txt = (ema5Up ? &quot;صاعد&quot; : ema5Dn ? &quot;هابط&quot; : &quot;ثابت&quot;) + (close &gt; ema5s ? &quot; | فوق&quot; : &quot; | تحت&quot;)
-ema5Col = ema5Up ? color.lime : ema5Dn ? color.red : color.gray
-wickDn = math.min(close, open) - low
-wickUp = high - math.max(close, open)
-bounceGoldL = isLongFib and inGold and close &gt; open and low &lt;= lv618 and close &gt;= lv382
-bounceGoldS = isShortFib and inGold and close &lt; open and high &gt;= lv618 and close &lt;= lv382
-bounceAvL = isLongFib and not na(avwap) and low &lt;= avwap and close &gt; avwap and close &gt; open and wickDn &gt;= atr * 0.12
-bounceAvS = isShortFib and not na(avwap) and high &gt;= avwap and close &lt; avwap and close &lt; open and wickUp &gt;= atr * 0.12
-bounceTlL = tlUp and not na(tlNow) and low &lt;= tlNow and close &gt; tlNow and close &gt; open
-bounceTlS = tlDn and not na(tlNow) and high &gt;= tlNow and close &lt; tlNow and close &lt; open
-brkEndL = isLongFib and close &gt; lv100 and close[1] &lt;= lv100 and (bullPat or strongVol)
-brkEndS = isShortFib and close &lt; lv100 and close[1] &gt;= lv100 and (bearPat or strongVol)
-holdExtL = isLongFib and extended and close &gt; lv100 and ema5Up
-holdExtS = isShortFib and extended and close &lt; lv100 and ema5Dn
-zoneTxt = &quot;لا كسر/ارتداد&quot;
-zoneCol = color.gray
-if lostStart
-    zoneTxt := &quot;كسر الوقف | إلغاء الموجة&quot;
-    zoneCol := color.red
-else if brkEndL or holdExtL
-    zoneTxt := &quot;كسر القمة | امتداد صعود&quot;
-    zoneCol := color.lime
-else if brkEndS or holdExtS
-    zoneTxt := &quot;كسر القاع | امتداد هبوط&quot;
-    zoneCol := color.red
-else if bounceGoldL
-    zoneTxt := &quot;ارتداد ذهبية | صعود&quot;
-    zoneCol := color.lime
-else if bounceGoldS
-    zoneTxt := &quot;ارتداد ذهبية | هبوط&quot;
-    zoneCol := color.red
-else if bounceAvL
-    zoneTxt := &quot;ارتداد VWAP | صعود&quot;
-    zoneCol := color.lime
-else if bounceAvS
-    zoneTxt := &quot;ارتداد VWAP | هبوط&quot;
-    zoneCol := color.red
-else if bounceTlL
-    zoneTxt := &quot;ارتداد خط الاتجاه | صعود&quot;
-    zoneCol := color.lime
-else if bounceTlS
-    zoneTxt := &quot;ارتداد خط الاتجاه | هبوط&quot;
-    zoneCol := color.red
-
-atrW = nz(atr, close * 0.01)
-cBd1 = f_cBody(1)
-cBd2 = f_cBody(2)
-cBd3 = f_cBody(3)
-r1 = f_cRng(1)
-wd1 = f_cWd(1)
-wu1 = f_cWu(1)
-wd2 = f_cWd(2)
-wu2 = f_cWu(2)
-pos1 = (close[1] - low[1]) / r1
-bull1 = close[1] &gt; open[1]
-bear1 = close[1] &lt; open[1]
-bull2 = close[2] &gt; open[2]
-bear2 = close[2] &lt; open[2]
-bull3 = close[3] &gt; open[3]
-bear3 = close[3] &lt; open[3]
-mornStar = bear3 and cBd2 &lt;= cBd3 * 0.55 and bull1 and close[1] &gt; (open[3] + close[3]) * 0.5 and low[2] &lt; math.min(low[3], low[1])
-evenStar = bull3 and cBd2 &lt;= cBd3 * 0.55 and bear1 and close[1] &lt; (open[3] + close[3]) * 0.5 and high[2] &gt; math.max(high[3], high[1])
-soldiers = bull1 and bull2 and bull3 and close[1] &gt; close[2] and close[2] &gt; close[3] and wu1 &lt; cBd1 * 0.5 and wu2 &lt; cBd2 * 0.5 and cBd1 &gt;= atrW * 0.22
-crows = bear1 and bear2 and bear3 and close[1] &lt; close[2] and close[2] &lt; close[3] and wd1 &lt; cBd1 * 0.5 and wd2 &lt; cBd2 * 0.5 and cBd1 &gt;= atrW * 0.22
-bullEngC = bull1 and bear2 and close[1] &gt;= open[2] and open[1] &lt;= close[2] and cBd1 &gt; cBd2
-bearEngC = bear1 and bull2 and close[1] &lt;= open[2] and open[1] &gt;= close[2] and cBd1 &gt; cBd2
-pierce = bear2 and bull1 and open[1] &lt;= low[2] and close[1] &gt; (open[2] + close[2]) * 0.5 and close[1] &lt; open[2]
-darkC = bull2 and bear1 and open[1] &gt;= high[2] and close[1] &lt; (open[2] + close[2]) * 0.5 and close[1] &gt; open[2]
-twzBot = math.abs(low[1] - low[2]) &lt;= atrW * 0.12 and wd1 &gt;= atrW * 0.22 and wd2 &gt;= atrW * 0.16
-twzTop = math.abs(high[1] - high[2]) &lt;= atrW * 0.12 and wu1 &gt;= atrW * 0.22 and wu2 &gt;= atrW * 0.16
-harB = bear2 and bull1 and high[1] &lt; high[2] and low[1] &gt; low[2] and cBd1 &lt; cBd2 * 0.75
-harS = bull2 and bear1 and high[1] &lt; high[2] and low[1] &gt; low[2] and cBd1 &lt; cBd2 * 0.75
-insideBar = high[1] &lt; high[2] and low[1] &gt; low[2] and not harB and not harS
-hammer1 = wd1 &gt;= cBd1 * 1.7 and wd1 &gt;= atrW * 0.40 and wu1 &lt;= cBd1 * 0.7 and pos1 &gt;= 0.55
-star1 = wu1 &gt;= cBd1 * 1.7 and wu1 &gt;= atrW * 0.40 and wd1 &lt;= cBd1 * 0.7 and pos1 &lt;= 0.45
-hangMan = hammer1 and isLongFib
-invHam = wu1 &gt;= cBd1 * 1.7 and wu1 &gt;= atrW * 0.40 and wd1 &lt;= cBd1 * 0.6 and pos1 &gt;= 0.45 and isShortFib and not star1
-doji1 = cBd1 &lt;= r1 * 0.28 and r1 &gt;= atrW * 0.45
-dragDoji = doji1 and wd1 &gt;= r1 * 0.58 and wu1 &lt;= r1 * 0.14
-gravDoji = doji1 and wu1 &gt;= r1 * 0.58 and wd1 &lt;= r1 * 0.14
-longDoji = doji1 and wd1 &gt;= r1 * 0.28 and wu1 &gt;= r1 * 0.28
-spinTop = cBd1 &lt;= r1 * 0.40 and wd1 &gt;= cBd1 * 0.5 and wu1 &gt;= cBd1 * 0.5 and r1 &gt;= atrW * 0.35 and not doji1
-maruUp = bull1 and cBd1 &gt;= atrW * 0.45 and wd1 &lt; atrW * 0.18 and wu1 &lt; atrW * 0.18
-maruDn = bear1 and cBd1 &gt;= atrW * 0.45 and wd1 &lt; atrW * 0.18 and wu1 &lt; atrW * 0.18
-sweepLo = not na(lastL) and low[1] &lt; lastL and close[1] &gt; lastL
-sweepHi = not na(lastH) and high[1] &gt; lastH and close[1] &lt; lastH
-atAv1 = not na(avwap[1]) and low[1] &lt;= avwap[1] and high[1] &gt;= avwap[1]
-atGold1 = inGold[1] or (not na(lv382) and not na(lv618) and low[1] &lt;= math.max(lv382, lv618) and high[1] &gt;= math.min(lv382, lv618))
-pinLo = hammer1
-pinHi = star1
-formingLo = not barstate.isconfirmed and dnW &gt;= atrW * 0.50 and dnW &gt;= body * 1.5
-formingHi = not barstate.isconfirmed and upW &gt;= atrW * 0.50 and upW &gt;= body * 1.5
-nearNews60 = nearestLeft &lt;= 60
-locTag = atGold1 ? &quot; على ذهبية&quot; : atAv1 ? &quot; على VWAP&quot; : &quot;&quot;
-candleTxt = &quot;لا نمط شمعة | محايد&quot;
-candleCol = color.gray
-if mornStar
-    candleTxt := &quot;نجمة صباح | 3 شموع انعكاس | صعود&quot;
-    candleCol := color.lime
-else if evenStar
-    candleTxt := &quot;نجمة مساء | 3 شموع انعكاس | هبوط&quot;
-    candleCol := color.red
-else if soldiers
-    candleTxt := &quot;3 جنود | استمرار شراء | صعود&quot;
-    candleCol := color.lime
-else if crows
-    candleTxt := &quot;3 غربان | استمرار بيع | هبوط&quot;
-    candleCol := color.red
-else if bullEngC
-    candleTxt := &quot;ابتلاع شرائي | المشترون غطوا البيع&quot; + locTag + &quot; | &quot; + (isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;)
-    candleCol := color.lime
-else if bearEngC
-    candleTxt := &quot;ابتلاع بيعي | البائعون غطوا الشراء&quot; + locTag + &quot; | &quot; + (isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;)
-    candleCol := color.red
-else if pierce
-    candleTxt := &quot;اختراق | إغلاق في نصف شمعة البيع | &quot; + (isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;)
-    candleCol := color.lime
-else if darkC
-    candleTxt := &quot;سحابة سوداء | إغلاق في نصف شمعة الشراء | &quot; + (isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;)
-    candleCol := color.red
-else if harB
-    candleTxt := &quot;هارامي شرائي | ضعف البيع داخل الشمعة | صعود قصير&quot;
-    candleCol := color.orange
-else if harS
-    candleTxt := &quot;هارامي بيعي | ضعف الشراء داخل الشمعة | هبوط قصير&quot;
-    candleCol := color.orange
-else if insideBar
-    candleTxt := &quot;شمعة داخلية | ضغط — انتظر كسر | محايد&quot;
-    candleCol := color.orange
-else if maruUp
-    candleTxt := &quot;ماروبوزو صاعد | شراء بلا ذيل | صعود&quot;
-    candleCol := color.lime
-else if maruDn
-    candleTxt := &quot;ماروبوزو هابط | بيع بلا ذيل | هبوط&quot;
-    candleCol := color.red
-else if spinTop
-    candleTxt := &quot;دوامة&quot; + locTag + &quot; | جسم صغير وذيول | محايد&quot;
-    candleCol := color.orange
-else if longDoji
-    candleTxt := &quot;دوجي أرجل&quot; + locTag + &quot; | تردد قوي | محايد&quot;
-    candleCol := color.orange
-else if doji1
-    candleTxt := &quot;دوجي&quot; + locTag + &quot; | تردد — انتظر التالية | محايد&quot;
-    candleCol := color.orange
-
-wickTxt = &quot;لا ذيل معتبر | محايد&quot;
-wickCol = color.gray
-wickBias = &quot;محايد&quot;
-if sweepLo and (hammer1 or pos1 &gt;= 0.55)
-    wickTxt := &quot;مطرقة صيد قاع&quot; + locTag + &quot; | سيولة تحت اتشالت&quot;
-    wickCol := color.lime
-    wickBias := isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;
-else if sweepHi and (star1 or pos1 &lt;= 0.45)
-    wickTxt := &quot;نجم صيد قمة&quot; + locTag + &quot; | سيولة فوق اتشالت&quot;
-    wickCol := color.red
-    wickBias := isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
-else if twzBot
-    wickTxt := &quot;ملاقط قاع | قاعين متساويين&quot;
-    wickCol := color.lime
-    wickBias := isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;
-else if twzTop
-    wickTxt := &quot;ملاقط قمة | قمتين متساويتين&quot;
-    wickCol := color.red
-    wickBias := isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
-else if hangMan
-    wickTxt := &quot;رجل مشنوق&quot; + locTag + &quot; | مطرقة بعد صعود&quot;
-    wickCol := color.orange
-    wickBias := &quot;هبوط قصير&quot;
-else if invHam
-    wickTxt := &quot;مطرقة مقلوبة&quot; + locTag + &quot; | ذيل علوي بعد هبوط&quot;
-    wickCol := color.orange
-    wickBias := &quot;صعود قصير&quot;
-else if hammer1
-    wickTxt := &quot;مطرقة&quot; + locTag + &quot; | مشترين رفضوا القاع&quot;
-    wickCol := color.lime
-    wickBias := isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;
-else if star1
-    wickTxt := &quot;نجم هابط&quot; + locTag + &quot; | بائعين رفضوا القمة&quot;
-    wickCol := color.red
-    wickBias := isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
-else if dragDoji
-    wickTxt := &quot;يعسوب&quot; + locTag + &quot; | دوجي ذيل سفلي&quot;
-    wickCol := color.lime
-    wickBias := isShortFib ? &quot;صعود قصير&quot; : &quot;صعود&quot;
-else if gravDoji
-    wickTxt := &quot;شاهد قبر&quot; + locTag + &quot; | دوجي ذيل علوي&quot;
-    wickCol := color.red
-    wickBias := isLongFib ? &quot;هبوط قصير&quot; : &quot;هبوط&quot;
-else if formingLo
-    wickTxt := &quot;ذيل سفلي يتشكل | لا تتصرف قبل الإغلاق&quot;
-    wickCol := color.orange
-    wickBias := &quot;صعود قصير&quot;
-else if formingHi
-    wickTxt := &quot;ذيل علوي يتشكل | لا تتصرف قبل الإغلاق&quot;
-    wickCol := color.orange
-    wickBias := &quot;هبوط قصير&quot;
-else if bounceGoldS or bounceAvS or bounceTlS
-    wickTxt := &quot;رفض من المقاومة | بائعين على المستوى&quot;
-    wickCol := color.red
-    wickBias := &quot;هبوط&quot;
-else if bounceGoldL or bounceAvL or bounceTlL
-    wickTxt := &quot;رفض من الدعم | مشترين على المستوى&quot;
-    wickCol := color.lime
-    wickBias := &quot;صعود&quot;
-wickTxt := wickTxt + &quot; | &quot; + wickBias
-if nearNews60 and wickBias != &quot;محايد&quot;
-    wickTxt := wickTxt + &quot; · خبر قريب&quot;
-if nearNews60 and candleTxt != &quot;لا نمط شمعة | محايد&quot;
-    candleTxt := candleTxt + &quot; · خبر قريب&quot;
-
-// ══════════════════════════════════════════════════════════════
-// التوصية: دخول من المنطقة الذهبية فقط — لا مطاردة القمة
-// ══════════════════════════════════════════════════════════════
-pullBuy  = isLongFib and legOk and (inGold or inShallow)
-pullSell = isShortFib and legOk and (inGold or inShallow)
-contBuy  = isLongFib and legOk and atEnd and bullPat and strongVol and aboveAv and not extended
-contSell = isShortFib and legOk and atEnd and bearPat and strongVol and not aboveAv and not extended
-
 scoreB = 0
 scoreS = 0
-if pullBuy
-    scoreB += 3
-if pullSell
-    scoreS += 3
-if inGold and isLongFib
+if emaUp
     scoreB += 2
-if inGold and isShortFib
+if emaDn
     scoreS += 2
-if aboveAv and isLongFib
+if aboveFast
     scoreB += 1
-if not aboveAv and isShortFib
+if not aboveFast
     scoreS += 1
-if bullPat
-    scoreB += 1
-if bearPat
-    scoreS += 1
-if aboveTL and isLongFib
-    scoreB += 1
-if not aboveTL and isShortFib and not na(tlNow)
-    scoreS += 1
-if nearPoc and isLongFib
-    scoreB += 1
-if nearPoc and isShortFib
-    scoreS += 1
-if contBuy
+if rsi &gt; 55 and rsi &lt; 75
     scoreB += 2
-if contSell
+else if rsiContUp
+    scoreB += 2
+if rsi &lt; 45 and rsi &gt; 25
     scoreS += 2
+else if rsiContDn
+    scoreS += 2
+if flowLong
+    scoreB += 2
+if flowShort
+    scoreS += 2
+if close &gt; bbMid
+    scoreB += 1
+if close &lt; bbMid
+    scoreS += 1
 
 raw = &quot;انتظار&quot;
-if (pullBuy or contBuy) and scoreB &gt;= 4 and scoreB &gt; scoreS
+if scoreB &gt;= 5 and scoreB &gt; scoreS + 1
     raw := &quot;شراء&quot;
-else if (pullSell or contSell) and scoreS &gt;= 4 and scoreS &gt; scoreB
+else if scoreS &gt;= 5 and scoreS &gt; scoreB + 1
     raw := &quot;بيع&quot;
 
-peakLive = legOk and ((isLongFib and hiOff &gt;= -2) or (isShortFib and loOff &gt;= -2))
-peakHold = atEnd and not peakLive
-
 holdNeed = timeframe.in_seconds() &gt;= 900 ? 1 : 3
-weakLong  = lostStart or isShortFib
-weakShort = lostStart or isLongFib
+weakLong  = not aboveFast or emaDn
+weakShort = aboveFast or emaUp
 
+var bool lockedBE = false
 var string rec = &quot;انتظار&quot;
 var int hold = 0
 if raw == &quot;شراء&quot; or raw == &quot;بيع&quot;
@@ -1050,10 +1078,10 @@ if raw == &quot;شراء&quot; or raw == &quot;بيع&quot;
     hold := 0
 else
     exiting = (rec == &quot;شراء&quot; and weakLong) or (rec == &quot;بيع&quot; and weakShort)
-    if exiting
+    if exiting and not lockedBE
         rec := &quot;انتظار&quot;
         hold := 0
-    else
+    else if not exiting
         hold += 1
         if hold &gt;= holdNeed
             rec := &quot;انتظار&quot;
@@ -1061,74 +1089,287 @@ else
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 newBuy  = rec == &quot;شراء&quot; and rec[1] != &quot;شراء&quot;
 newSell = rec == &quot;بيع&quot;  and rec[1] != &quot;بيع&quot;
-recCol = rec == &quot;شراء&quot; ? color.lime : rec == &quot;بيع&quot; ? color.red : color.gray
 
-entryP = lv618
-slP    = isLongFib ? lv000 - atr * 0.2 : lv000 + atr * 0.2
-tpP    = lv127
+// ══════════════════════════════════════════════════════════════
+// المراكز + حجز الربح + تمديد مشروط
+// ══════════════════════════════════════════════════════════════
+swingLo = ta.lowest(low[1], 12)
+swingHi = ta.highest(high[1], 12)
+longSL  = math.min(swingLo, emaFast) - atr * 0.3
+shortSL = math.max(swingHi, emaFast) + atr * 0.3
+
+var float entryP  = na
+var float origSL  = na
+var float liveSL  = na
+var float liveTP  = na
+var float planTP  = na
+var string tDir   = na
+
+alignedLong  = htfUp and aboveVwap
+alignedShort = not htfUp and not aboveVwap
+
+if newBuy
+    entryP   := close
+    origSL   := longSL
+    liveSL   := longSL
+    tDir     := &quot;BUY&quot;
+    lockedBE := false
+    swingM   = na(lastPH) ? swingHi : math.max(lastPH, swingHi)
+    planTP   := f_tpLong(close, longSL, swingM, bbUpper, vwapVal, alignedLong, flowLong, atr)
+    liveTP   := planTP
+else if newSell
+    entryP   := close
+    origSL   := shortSL
+    liveSL   := shortSL
+    tDir     := &quot;SELL&quot;
+    lockedBE := false
+    swingM   = na(lastPL) ? swingLo : math.min(lastPL, swingLo)
+    planTP   := f_tpShort(close, shortSL, swingM, bbLower, vwapVal, alignedShort, flowShort, atr)
+    liveTP   := planTP
+else if not hasTrade
+    entryP   := na
+    origSL   := na
+    liveSL   := na
+    liveTP   := na
+    planTP   := na
+    tDir     := na
+    lockedBE := false
+
+// إن ضاعت المراكز أثناء توصية نشطة — أعد بناءها
+if hasTrade and (na(entryP) or na(liveSL) or na(liveTP))
+    entryP := nz(entryP, close)
+    if rec == &quot;شراء&quot;
+        tDir   := &quot;BUY&quot;
+        origSL := nz(origSL, longSL)
+        liveSL := nz(liveSL, origSL)
+        swingM = na(lastPH) ? swingHi : math.max(lastPH, swingHi)
+        planTP := nz(planTP, f_tpLong(entryP, liveSL, swingM, bbUpper, vwapVal, alignedLong, flowLong, nz(atr, close * 0.01)))
+        liveTP := nz(liveTP, planTP)
+    else
+        tDir   := &quot;SELL&quot;
+        origSL := nz(origSL, shortSL)
+        liveSL := nz(liveSL, origSL)
+        swingM = na(lastPL) ? swingLo : math.min(lastPL, swingLo)
+        planTP := nz(planTP, f_tpShort(entryP, liveSL, swingM, bbLower, vwapVal, alignedShort, flowShort, nz(atr, close * 0.01)))
+        liveTP := nz(liveTP, planTP)
+
+bool tpHit = false
+bool slHit = false
+bool lockHalf = false
+
+if tDir == &quot;BUY&quot; and hasTrade and not newBuy
+    risk0 = math.max(entryP - origSL, atr * 0.35)
+    span = liveTP - entryP
+    progress = span &gt; 0 ? (close - entryP) / span : 0.0
+    profitR = (close - entryP) / risk0
+    caution = rsi &gt; 75 and weakVol and not bullImpulse
+
+    // 1) قفل الدخول بعد 55% من الطريق أو +1R
+    if progress &gt;= 0.55 or profitR &gt;= 1.0
+        lockedBE := true
+        liveSL := math.max(liveSL, entryP + atr * 0.10)
+
+    // 2) قرب الهدف: احجز نصف المشوار المخطط
+    if progress &gt;= 0.80
+        lockHalf := true
+        liveSL := math.max(liveSL, entryP + (planTP - entryP) * 0.50)
+
+    // 3) ضعف التدفق وأنت رابح: اقفز للـ EMA 5 حتى لا يعود الربح
+    if weakLong and close &gt; entryP
+        snap = math.max(entryP + atr * 0.10, emaFast - atr * 0.20)
+        liveSL := math.max(liveSL, snap)
+
+    // 4) بعد قفل الدخول: تتبّع EMA 5 (خط الدفاع في الكود) ولا يُرخى
+    if lockedBE
+        trail = emaFast - atr * 0.30
+        if trail &gt; liveSL
+            liveSL := trail
+
+    // 5) تمديد الهدف: دفعة جديدة + تدفق + إطار أعلى + منتصف الطريق
+    //    أقرب مغناطيس فقط — ليس أبعد مستوى
+    fresh = bullImpulse or not na(ph)
+    flowOn = emaUp and aboveFast and (flowLong or rsiContUp) and not caution
+    if flowOn and htfUp and fresh and progress &gt;= 0.55
+        maxP = entryP + math.max(risk0 * 2.8, atr * 2.4)
+        pad = atr * 0.25
+        rd = f_roundUp(math.max(close, liveTP))
+        nxt = f_nearLong(liveTP, pad, maxP, close, bbUpper, rd, lastPH)
+        if not na(nxt)
+            liveTP := nxt
+
+    if low &lt;= liveSL
+        slHit := true
+    else if high &gt;= liveTP
+        tpHit := true
+
+else if tDir == &quot;SELL&quot; and hasTrade and not newSell
+    risk0 = math.max(origSL - entryP, atr * 0.35)
+    span = entryP - liveTP
+    progress = span &gt; 0 ? (entryP - close) / span : 0.0
+    profitR = (entryP - close) / risk0
+    caution = rsi &lt; 25 and weakVol and not bearImpulse
+
+    if progress &gt;= 0.55 or profitR &gt;= 1.0
+        lockedBE := true
+        liveSL := math.min(liveSL, entryP - atr * 0.10)
+
+    if progress &gt;= 0.80
+        lockHalf := true
+        liveSL := math.min(liveSL, entryP - (entryP - planTP) * 0.50)
+
+    if weakShort and close &lt; entryP
+        snap = math.min(entryP - atr * 0.10, emaFast + atr * 0.20)
+        liveSL := math.min(liveSL, snap)
+
+    if lockedBE
+        trail = emaFast + atr * 0.30
+        if trail &lt; liveSL
+            liveSL := trail
+
+    fresh = bearImpulse or not na(pl)
+    flowOn = emaDn and not aboveFast and (flowShort or rsiContDn) and not caution
+    if flowOn and not htfUp and fresh and progress &gt;= 0.55
+        maxP = entryP - math.max(risk0 * 2.8, atr * 2.4)
+        pad = atr * 0.25
+        rd = f_roundDn(math.min(close, liveTP))
+        nxt = f_nearShort(liveTP, pad, maxP, close, bbLower, rd, lastPL)
+        if not na(nxt)
+            liveTP := nxt
+
+    if high &gt;= liveSL
+        slHit := true
+    else if low &lt;= liveTP
+        tpHit := true
+
+// إغلاق الصفقة عند الهدف أو الوقف المحمي
+if tpHit or slHit
+    rec := &quot;انتظار&quot;
+    hold := 0
+    hasTrade := false
+
+recCol = rec == &quot;شراء&quot; ? color.lime : rec == &quot;بيع&quot; ? color.red : color.gray
 
 advice = &quot;—&quot;
 adviceCol = color.gray
-if rec == &quot;شراء&quot;
-    advice := inGold ? &quot;أفضل دخول | هدف امتداد 1&quot; : inShallow ? &quot;تصحيح بسيط | دخول&quot; : peakLive ? &quot;القمة تتحرك | امتداد&quot; : &quot;زخم مع الموجة&quot;
+if tpHit
+    advice := &quot;هدف تحقق | أُغلق&quot;
     adviceCol := color.lime
-else if rec == &quot;بيع&quot;
-    advice := inGold ? &quot;أفضل دخول | هدف امتداد 1&quot; : inShallow ? &quot;تصحيح بسيط | دخول&quot; : peakLive ? &quot;القاع يتحرك | امتداد&quot; : &quot;زخم مع الموجة&quot;
-    adviceCol := color.red
-else if lostStart
-    advice := &quot;كسر الوقف | انتظر موجة جديدة&quot;
-    adviceCol := color.red
-else if peakLive and isLongFib
-    advice := bullPat and strongVol ? &quot;قمة تتحرك | امتداد نحو جني الربح&quot; : &quot;قمة حتى الآن | تراجع أو امتداد&quot;
-    adviceCol := bullPat and strongVol ? color.lime : color.orange
-else if peakLive and isShortFib
-    advice := bearPat and strongVol ? &quot;قاع يتحرك | امتداد نحو جني الربح&quot; : &quot;قاع حتى الآن | ارتداد أو امتداد&quot;
-    adviceCol := bearPat and strongVol ? color.red : color.orange
-else if atEnd
-    advice := isLongFib ? &quot;قمة مستقرة | انتظر أفضل دخول&quot; : &quot;قاع مستقر | انتظر أفضل دخول&quot;
-    adviceCol := color.orange
-else if inGold
-    advice := &quot;في أفضل دخول | بانتظار تأكيد&quot;
-    adviceCol := color.yellow
-else if legOk
-    advice := isLongFib ? &quot;موجة صاعدة | انتظر أفضل دخول&quot; : &quot;موجة هابطة | انتظر أفضل دخول&quot;
-    adviceCol := color.gray
+else if slHit
+    advice := lockedBE ? &quot;حُجز الربح | أُغلق&quot; : &quot;وقف خسارة&quot;
+    adviceCol := lockedBE ? color.lime : color.red
+else if hasTrade
+    if rec == &quot;شراء&quot;
+        if lockHalf
+            advice := &quot;اقفل جزء | الهدف قريب&quot;
+            adviceCol := color.yellow
+        else if lockedBE and emaUp and aboveFast
+            advice := &quot;استمر | الوقف محمي&quot;
+            adviceCol := color.lime
+        else if emaUp and aboveFast and not (rsi &gt; 75 and weakVol and not bullImpulse)
+            advice := &quot;استمر | التدفق يدعم&quot;
+            adviceCol := color.lime
+        else if rsi &gt; 75 and weakVol and not bullImpulse
+            advice := &quot;احذر | تشبع + حجم ضعيف&quot;
+            adviceCol := color.orange
+        else if not aboveFast or emaDn
+            advice := &quot;راقب الخروج | ضعف&quot;
+            adviceCol := color.orange
+        else
+            advice := &quot;استمر بحذر&quot;
+            adviceCol := color.yellow
+    else if rec == &quot;بيع&quot;
+        if lockHalf
+            advice := &quot;اقفل جزء | الهدف قريب&quot;
+            adviceCol := color.yellow
+        else if lockedBE and emaDn and not aboveFast
+            advice := &quot;استمر | الوقف محمي&quot;
+            adviceCol := color.red
+        else if emaDn and not aboveFast and not (rsi &lt; 25 and weakVol and not bearImpulse)
+            advice := &quot;استمر | التدفق يدعم&quot;
+            adviceCol := color.red
+        else if rsi &lt; 25 and weakVol and not bearImpulse
+            advice := &quot;احذر | تشبع بيع + حجم ضعيف&quot;
+            adviceCol := color.orange
+        else if aboveFast or emaUp
+            advice := &quot;راقب الخروج | ضعف&quot;
+            adviceCol := color.orange
+        else
+            advice := &quot;استمر بحذر&quot;
+            adviceCol := color.yellow
 
 mxPosLong = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;شراء&quot;
 mxPosShort = mxEntry &gt; 0 and mxCont &gt; 0 and mxSide == &quot;بيع&quot;
-if mxPosLong and rec == &quot;بيع&quot;
-    advice := pinHi ? &quot;لونج ضد الموجة | نجم رفض — لا تضيف، جني الارتداد&quot; : pinLo or sweepLo ? &quot;مطرقة تدعم لونجك | جني عند الرفض — لا زيادة&quot; : &quot;لونج ضد الموجة | الارتداد للخروج&quot;
-    adviceCol := color.orange
-else if mxPosShort and rec == &quot;شراء&quot;
-    advice := pinLo ? &quot;شورت ضد الموجة | مطرقة رفض — لا تضيف، جني التصحيح&quot; : pinHi or sweepHi ? &quot;نجم يدعم شورك | جني عند الرفض — لا زيادة&quot; : &quot;شورت ضد الموجة | التصحيح للخروج&quot;
-    adviceCol := color.orange
-else if rec == &quot;انتظار&quot;
-    if sweepLo
-        advice := &quot;مطرقة صيد قاع | انتظر تأكيد فوق الذيل ثم تدفق&quot;
+if not tpHit and not slHit
+    if mxPosLong and rec == &quot;بيع&quot;
+        advice := pinHi or bounceEmaS ? &quot;لونج ضد الاتجاه | نجم/رفض EMA — لا تضيف، جني الارتداد&quot; : pinLo or sweepLo ? &quot;مطرقة تدعم لونجك | جني عند الرفض — لا زيادة&quot; : &quot;لونج ضد 1H | الارتداد للخروج لا للزيادة&quot;
         adviceCol := color.orange
-    else if sweepHi
-        advice := &quot;نجم صيد قمة | انتظر تأكيد تحت الذيل ثم تدفق&quot;
+    else if mxPosShort and rec == &quot;شراء&quot;
+        advice := pinLo or bounceEmaL ? &quot;شورت ضد الاتجاه | مطرقة/رفض دعم — لا تضيف، جني التصحيح&quot; : pinHi or sweepHi ? &quot;نجم يدعم شورك | جني عند الرفض — لا زيادة&quot; : &quot;شورت ضد 1H | التصحيح للخروج لا للزيادة&quot;
         adviceCol := color.orange
-    else if pinLo and isShortFib
-        advice := &quot;مطرقة ضد الهبوط | ارتداد قصير — مو عكس الموجة&quot;
-        adviceCol := color.orange
-    else if pinHi and isLongFib
-        advice := &quot;نجم ضد الصعود | تصحيح قصير — مو عكس الموجة&quot;
-        adviceCol := color.orange
+    else if rec == &quot;انتظار&quot; and advice == &quot;—&quot;
+        if sweepLo
+            advice := &quot;مطرقة صيد قاع | انتظر تأكيد فوق الذيل ثم تدفق&quot;
+            adviceCol := color.orange
+        else if sweepHi
+            advice := &quot;نجم صيد قمة | انتظر تأكيد تحت الذيل ثم تدفق&quot;
+            adviceCol := color.orange
+        else if pinLo and emaDn
+            advice := &quot;مطرقة ضد الهبوط | ارتداد قصير تحت EMA — مو عكس&quot;
+            adviceCol := color.orange
+        else if pinHi and emaUp
+            advice := &quot;نجم ضد الصعود | تصحيح قصير فوق EMA — مو عكس&quot;
+            adviceCol := color.orange
+        else if pinLo
+            advice := &quot;مطرقة | مشترين — لا تدخل حتى يتوافق التدفق&quot;
+            adviceCol := color.yellow
+        else if pinHi
+            advice := &quot;نجم هابط | بائعين — لا تدخل حتى يتوافق التدفق&quot;
+            adviceCol := color.yellow
 
-fibText = not legOk ? &quot;لا موجة كافية&quot; : isLongFib ? (peakLive ? &quot;لونج | القمة تتحرك&quot; : &quot;لونج | قمة حتى الآن&quot;) : (peakLive ? &quot;شورت | القاع يتحرك&quot; : &quot;شورت | قاع حتى الآن&quot;)
-fibCol  = not legOk ? color.gray : isLongFib ? color.lime : color.red
-goldText = inGold ? &quot;الآن في أفضل دخول&quot; : inShallow ? &quot;تصحيح بسيط&quot; : peakLive ? (isLongFib ? &quot;القمة تتحرك الآن&quot; : &quot;القاع يتحرك الآن&quot;) : atEnd ? &quot;عند القمة/القاع حتى الآن&quot; : close &lt; lv236 and isLongFib ? &quot;قرب الوقف&quot; : close &gt; lv236 and isShortFib ? &quot;قرب الوقف&quot; : &quot;خارج منطقة الدخول&quot;
-goldCol  = inGold ? color.lime : inShallow ? color.yellow : peakLive ? color.orange : color.gray
-avText = na(avwap) ? &quot;—&quot; : aboveAv ? &quot;فوق | تدفق شراء&quot; : &quot;تحت | تدفق بيع&quot;
-avCol  = na(avwap) ? color.gray : aboveAv ? color.lime : color.red
-tlText = tlUp ? &quot;قاعين صاعدين | دعم&quot; : tlDn ? &quot;قمتين هابطتين | مقاومة&quot; : &quot;لا خط واضح&quot;
-tlCol  = tlUp ? color.lime : tlDn ? color.red : color.gray
-pocText = na(poc) ? &quot;—&quot; : nearPoc ? &quot;عند POC&quot; : close &gt; poc ? &quot;فوق POC&quot; : &quot;تحت POC&quot;
-pocCol  = na(poc) ? color.gray : nearPoc ? color.yellow : close &gt; poc ? color.lime : color.red
-posText = hasTrade ? (rec == &quot;شراء&quot; ? &quot;لونج نشط&quot; : &quot;شورت نشط&quot;) : &quot;لا صفقة&quot;
-posCol  = hasTrade ? recCol : color.gray
+bool lockWasOn = lockedBE
 
+if (tpHit or slHit) or not hasTrade
+    if not hasTrade
+        entryP   := na
+        origSL   := na
+        liveSL   := na
+        liveTP   := na
+        planTP   := na
+        tDir     := na
+        lockedBE := false
+
+// ══════════════════════════════════════════════════════════════
+// الرسم
+// ══════════════════════════════════════════════════════════════
+plot(emaFast, &quot;EMA 5&quot;, color=color.blue, linewidth=2)
+plot(emaSlow, &quot;EMA 13&quot;, color=color.orange, linewidth=1)
+plot(bbUpper, &quot;BB Upper&quot;, color=color.new(color.gray, 70))
+plot(bbLower, &quot;BB Lower&quot;, color=color.new(color.gray, 70))
+plot(showVwap ? vwapVal : na, &quot;VWAP&quot;, color=color.new(#AB47BC, 45), linewidth=1)
+
+var line lE = na
+var line lS = na
+var line lT = na
+if barstate.islast
+    if not na(lE)
+        line.delete(lE)
+        lE := na
+    if not na(lS)
+        line.delete(lS)
+        lS := na
+    if not na(lT)
+        line.delete(lT)
+        lT := na
+    showNow = showLevels and hasTrade and rec != &quot;انتظار&quot; and not na(entryP) and not na(liveSL) and not na(liveTP)
+    if showNow
+        lE := line.new(bar_index - 6, entryP, bar_index + 4, entryP, color=color.new(#00ACC1, 0), width=2)
+        lS := line.new(bar_index - 6, liveSL, bar_index + 4, liveSL, color=color.new(#EF5350, 0), width=2, style=line.style_dashed)
+        lT := line.new(bar_index - 6, liveTP, bar_index + 4, liveTP, color=color.new(#66BB6A, 0), width=2, style=line.style_dashed)
+
+bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
+
+// ══════════════════════════════════════════════════════════════
+// صفقة MEXC — Cont ثابت (1 Cont = 0.1 SOL). الربح يتبع السعر الحي
 mxQtyUse = mxCont * mxContSz
 mxOpen = mxEntry &gt; 0 and mxCont &gt; 0 and mxMargin &gt; 0 and mxLev &gt;= 1
 mxLong = mxSide == &quot;شراء&quot;
@@ -1150,145 +1391,61 @@ mxPnlLiqTxt = not mxOpen ? &quot;—&quot; : mxQtyBad ? &quot;الكمية Cont 
 newsNearTxt = nearestCD + &quot; | &quot; + newsStatus
 newsDirRngTxt = newsDirTxt + &quot;  &quot; + pxTxt
 newsMixTxt = newsPricedTxt + &quot; | &quot; + statTxt
-tblSz = size.small
+htfCvdTxt = htfText + &quot; | &quot; + cvdText
+sz = size.small
 
-// ══════════════════════════════════════════════════════════════
-// الرسم
-// ══════════════════════════════════════════════════════════════
-f_killLines(arr) =&gt;
-    sz = array.size(arr)
-    if sz &gt; 0
-        for i = 0 to sz - 1
-            line.delete(array.get(arr, i))
-        array.clear(arr)
-
-f_killLabs(arr) =&gt;
-    sz = array.size(arr)
-    if sz &gt; 0
-        for i = 0 to sz - 1
-            label.delete(array.get(arr, i))
-        array.clear(arr)
-
-f_killBox(arr) =&gt;
-    sz = array.size(arr)
-    if sz &gt; 0
-        for i = 0 to sz - 1
-            box.delete(array.get(arr, i))
-        array.clear(arr)
-
-f_fibLine(x1, y, col, w, sty, arr) =&gt;
-    array.push(arr, line.new(x1, y, bar_index + 4, y, xloc=xloc.bar_index, extend=extend.right, color=col, width=w, style=sty))
-
-f_fibLab(x, y, txt, col, arr) =&gt;
-    array.push(arr, label.new(x, y, txt, xloc=xloc.bar_index, style=label.style_none, color=color.new(color.black, 100), textcolor=col, size=size.normal, textalign=text.align_left))
-
-var array&lt;line&gt;  fibLn = array.new&lt;line&gt;()
-var array&lt;label&gt; fibLb = array.new&lt;label&gt;()
-var array&lt;box&gt;   fibBx = array.new&lt;box&gt;()
-var array&lt;line&gt;  extra = array.new&lt;line&gt;()
-var array&lt;label&gt; extraLb = array.new&lt;label&gt;()
-
-if barstate.islast
-    f_killLines(fibLn)
-    f_killLabs(fibLb)
-    f_killBox(fibBx)
-    f_killLines(extra)
-    f_killLabs(extraLb)
-
-    if showFib and legOk
-        x1 = math.max(0, b0)
-        f_fibLine(x1, lv000, color.new(#787B86, 0), 2, line.style_solid, fibLn)
-        f_fibLine(x1, lv236, color.new(#F23645, 20), 1, line.style_dashed, fibLn)
-        f_fibLine(x1, lv382, color.new(#FF9800, 10), 1, line.style_dashed, fibLn)
-        f_fibLine(x1, lv500, color.new(#787B86, 0), 1, line.style_solid, fibLn)
-        f_fibLine(x1, lv618, color.new(#089981, 0), 2, line.style_solid, fibLn)
-        f_fibLine(x1, lv786, color.new(#26C6DA, 10), 1, line.style_dashed, fibLn)
-        f_fibLine(x1, lv100, color.new(#FFD54F, 0), 2, line.style_solid, fibLn)
-
-        f_fibLab(bar_index, lv236, &quot;نزل زيادة لا تدخل&quot;, #FF5252, fibLb)
-        f_fibLab(bar_index, lv618, &quot;أفضل دخول&quot;, #00E676, fibLb)
-        f_fibLab(bar_index, lv100, isLongFib ? &quot;القمة حتى الآن&quot; : &quot;القاع حتى الآن&quot;, #FFD54F, fibLb)
-
-        if hasTrade
-            f_fibLine(x1, lv127, color.new(#2962FF, 0), 1, line.style_dotted, fibLn)
-            f_fibLine(x1, lv162, color.new(#AB47BC, 0), 1, line.style_dotted, fibLn)
-            f_fibLab(bar_index, lv127, &quot;امتداد 1&quot;, #448AFF, fibLb)
-            f_fibLab(bar_index, lv162, &quot;امتداد 2&quot;, #E040FB, fibLb)
-
-        if showGold
-            hiG = math.max(lv500, lv618)
-            loG = math.min(lv500, lv618)
-            array.push(fibBx, box.new(x1, hiG, bar_index + 8, loG, xloc=xloc.bar_index, bgcolor=color.new(#00E676, 88), border_color=color.new(#00E676, 55), border_width=1))
-
-        array.push(fibLn, line.new(x1, lv000, math.max(x1 + 1, b1), lv100, xloc=xloc.bar_index, color=color.new(isLongFib ? color.lime : color.red, 45), width=1, style=line.style_dotted))
-
-    if showAvwap and not na(avwap) and legOk
-        array.push(extra, line.new(math.max(0, b0), avwap, bar_index + 4, avwap, extend=extend.right, color=color.new(#AB47BC, 0), width=2))
-        array.push(extraLb, label.new(bar_index, avwap, &quot;متوسط الحجم&quot;, style=label.style_none, color=color.new(color.black, 100), textcolor=#CE93D8, size=size.small))
-
-    if showPoc and not na(poc) and legOk
-        array.push(extra, line.new(math.max(0, b0), poc, bar_index + 4, poc, extend=extend.right, color=color.new(#FFD54F, 0), width=1, style=line.style_dashed))
-
-    if showTL and tlUp
-        array.push(extra, line.new(prevLB, prevL, lastLB, lastL, extend=extend.right, color=color.new(#26A69A, 0), width=2))
-    if showTL and tlDn
-        array.push(extra, line.new(prevHB, prevH, lastHB, lastH, extend=extend.right, color=color.new(#EF5350, 0), width=2))
-
-    if showPos and hasTrade
-        eCol = rec == &quot;شراء&quot; ? color.new(#00ACC1, 0) : color.new(#FF8A65, 0)
-        array.push(extra, line.new(bar_index - 4, entryP, bar_index + 6, entryP, color=eCol, width=2))
-        array.push(extra, line.new(bar_index - 4, slP, bar_index + 6, slP, color=color.new(#EF5350, 0), width=2, style=line.style_dashed))
-        array.push(extra, line.new(bar_index - 4, tpP, bar_index + 6, tpP, color=color.new(#66BB6A, 0), width=2, style=line.style_dashed))
-        hiB = math.max(entryP, tpP)
-        loB = math.min(entryP, tpP)
-        array.push(fibBx, box.new(bar_index - 4, hiB, bar_index + 6, loB, bgcolor=color.new(rec == &quot;شراء&quot; ? #26A69A : #EF5350, 90), border_color=color.new(color.white, 80), border_width=1))
-
-bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
-
-var table t = table.new(position.top_right, 2, 19, border_width=1)
+var table t = table.new(position.top_right, 2, 21, border_width=1)
 
 if showTable and barstate.islast
-    table.clear(t, 0, 0, 1, 18)
-    table.cell(t, 0, 0, &quot;MEXC Structure v2.39&quot;, bgcolor=color.blue, text_color=color.white, text_size=tblSz)
-    table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=tblSz)
-    table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=tblSz)
-    table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=tblSz)
-    table.cell(t, 0, 2, &quot;نصيحة&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 2, advice, text_color=adviceCol, text_size=tblSz)
-    table.cell(t, 0, 3, &quot;صفقة MEXC&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 3, mxSideTxt, text_color=mxSideCol, text_size=tblSz)
-    table.cell(t, 0, 4, &quot;الربح&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 4, mxPnlLiqTxt, text_color=mxPnlCol, text_size=tblSz)
-    table.cell(t, 0, 5, &quot;تدفق كبير&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 5, whaleTxt, text_color=whaleCol, text_size=tblSz)
-    table.cell(t, 0, 6, &quot;فيبو / ذهبية&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 6, fibText + &quot; | &quot; + goldText, text_color=fibCol, text_size=tblSz)
-    table.cell(t, 0, 7, &quot;VWAP / POC&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 7, avText + &quot; | &quot; + pocText, text_color=avCol, text_size=tblSz)
-    table.cell(t, 0, 8, &quot;نمط / اتجاه&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 8, patText + &quot; | &quot; + tlText, text_color=patCol, text_size=tblSz)
-    table.cell(t, 0, 9, &quot;منطقة&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 9, zoneTxt, text_color=zoneCol, text_size=tblSz)
-    table.cell(t, 0, 10, &quot;شمعات&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 10, candleTxt, text_color=candleCol, text_size=tblSz)
-    table.cell(t, 0, 11, &quot;ذيول&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 11, wickTxt, text_color=wickCol, text_size=tblSz)
-    table.cell(t, 0, 12, &quot;الوقت&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 12, timeStr, text_size=tblSz)
-    table.cell(t, 0, 13, &quot;الجلسة&quot;, bgcolor=color.gray, text_size=tblSz)
-    table.cell(t, 1, 13, sessTxt, text_color=sessCol, text_size=tblSz)
-    table.cell(t, 0, 14, &quot;أقرب خبر&quot;, bgcolor=color.new(#37474F, 0), text_color=color.white, text_size=tblSz)
-    table.cell(t, 1, 14, newsNearTxt, bgcolor=color.new(#37474F, 0), text_color=newsCol, text_size=tblSz)
+    table.clear(t, 0, 0, 1, 20)
+    table.cell(t, 0, 0, &quot;MEXC Flow v7.23&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
+    table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=sz)
+    table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=sz)
+    table.cell(t, 0, 2, &quot;نصيحة&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 2, advice, text_color=adviceCol, text_size=sz)
+    table.cell(t, 0, 3, &quot;صفقة MEXC&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 3, mxSideTxt, text_color=mxSideCol, text_size=sz)
+    table.cell(t, 0, 4, &quot;الربح&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 4, mxPnlLiqTxt, text_color=mxPnlCol, text_size=sz)
+    table.cell(t, 0, 5, &quot;الحجم&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 5, rvolText, text_color=rvolCol, text_size=sz)
+    table.cell(t, 0, 6, &quot;تدفق كبير&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 6, whaleTxt, text_color=whaleCol, text_size=sz)
+    table.cell(t, 0, 7, &quot;EMA 5&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 7, emaFastText, text_color=emaFastCol, text_size=sz)
+    table.cell(t, 0, 8, &quot;RSI&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 8, str.tostring(rsi, &quot;#.#&quot;) + &quot; | &quot; + rsiText, text_color=rsiCol, text_size=sz)
+    table.cell(t, 0, 9, &quot;اتجاه EMA&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 9, emaTrend + &quot; | &quot; + emaSlowText, text_color=emaCol, text_size=sz)
+    table.cell(t, 0, 10, &quot;بولنجر / VWAP&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 10, bbPos + &quot; | &quot; + vwapText, text_color=bbCol, text_size=sz)
+    table.cell(t, 0, 11, &quot;إطار / تدفق&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 11, htfName + &quot; &quot; + htfCvdTxt, text_color=htfCol, text_size=sz)
+    table.cell(t, 0, 12, &quot;منطقة&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 12, zoneTxt, text_color=zoneCol, text_size=sz)
+    table.cell(t, 0, 13, &quot;شمعات&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 13, candleTxt, text_color=candleCol, text_size=sz)
+    table.cell(t, 0, 14, &quot;ذيول&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 14, wickTxt, text_color=wickCol, text_size=sz)
+    table.cell(t, 0, 15, &quot;الوقت&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 15, timeStr, text_size=sz)
+    table.cell(t, 0, 16, &quot;الجلسة&quot;, bgcolor=color.gray, text_size=sz)
+    table.cell(t, 1, 16, sessTxt, text_color=sessCol, text_size=sz)
+    table.cell(t, 0, 17, &quot;أقرب خبر&quot;, bgcolor=color.new(#37474F, 0), text_color=color.white, text_size=sz)
+    table.cell(t, 1, 17, newsNearTxt, bgcolor=color.new(#37474F, 0), text_color=newsCol, text_size=sz)
     if newsPanel
-        table.cell(t, 0, 15, &quot;اتجاه الخبر&quot;, bgcolor=color.gray, text_size=tblSz)
-        table.cell(t, 1, 15, newsDirRngTxt, text_color=newsDirCol, text_size=tblSz)
-        table.cell(t, 0, 16, &quot;نتيجة الخبر&quot;, bgcolor=color.gray, text_size=tblSz)
-        table.cell(t, 1, 16, newsResTxt, text_color=newsResCol, text_size=tblSz)
-        table.cell(t, 0, 17, &quot;تسعير SOL&quot;, bgcolor=color.gray, text_size=tblSz)
-        table.cell(t, 1, 17, newsMixTxt, text_color=statCol, text_size=tblSz)
+        table.cell(t, 0, 18, &quot;اتجاه الخبر&quot;, bgcolor=color.gray, text_size=sz)
+        table.cell(t, 1, 18, newsDirRngTxt, text_color=newsDirCol, text_size=sz)
+        table.cell(t, 0, 19, &quot;نتيجة الخبر&quot;, bgcolor=color.gray, text_size=sz)
+        table.cell(t, 1, 19, newsResTxt, text_color=newsResCol, text_size=sz)
+        table.cell(t, 0, 20, &quot;تسعير SOL&quot;, bgcolor=color.gray, text_size=sz)
+        table.cell(t, 1, 20, newsMixTxt, text_color=statCol, text_size=sz)
 
-alertcondition(newBuy,  &quot;شراء&quot;, &quot;شراء – MEXC Structure&quot;)
-alertcondition(newSell, &quot;بيع&quot;,  &quot;بيع – MEXC Structure&quot;)
+alertcondition(newBuy,  &quot;شراء&quot;, &quot;شراء – MEXC Flow&quot;)
+alertcondition(newSell, &quot;بيع&quot;,  &quot;بيع – MEXC Flow&quot;)
+alertcondition(tpHit, &quot;هدف&quot;, &quot;هدف تحقق – MEXC Flow&quot;)
+alertcondition(slHit and lockWasOn, &quot;حجز&quot;, &quot;حُجز الربح – MEXC Flow&quot;)
 alertcondition(isHighImpact and not isHighImpact[1], &quot;خبر&quot;, &quot;نافذة أخبار&quot;)
 alertcondition(approaching and not approaching[1], &quot;اقتراب&quot;, &quot;خبر خلال 12 د&quot;)
 </textarea>
