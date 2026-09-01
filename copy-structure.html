@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Structure v2.41</title>
+<title>Structure v2.42</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Structure v2.41</h1>
+<h1>Structure v2.42</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Structure – Fib v2.41&quot;, overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
+indicator(&quot;MEXC Structure – Fib v2.42&quot;, overlay=true, max_lines_count=60, max_labels_count=50, max_boxes_count=15)
 
 // ══════════════════════════════════════════════════════════════
 // الإعدادات
@@ -1217,6 +1217,46 @@ newsDirRngTxt = newsDirTxt + &quot;  &quot; + pxTxt
 newsMixTxt = newsPricedTxt + &quot; | &quot; + statTxt
 tblSz = size.small
 
+enterTxt = &quot;لا تدخل&quot;
+enterCol = color.gray
+if mxLive
+    if (mxLiveLong and rec == &quot;بيع&quot;) or (mxLiveShort and rec == &quot;شراء&quot;) or (blockedFlip and rec == &quot;انتظار&quot;)
+        enterTxt := &quot;اخرج فقط — لا تعكس&quot;
+        enterCol := color.orange
+    else
+        enterTxt := &quot;صفقتك قائمة — لا تضيف&quot;
+        enterCol := mxLiveLong ? color.lime : color.red
+else if rec == &quot;شراء&quot;
+    if blockedFlip
+        enterTxt := &quot;لا تدخل — انتظر تأكيد&quot;
+        enterCol := color.orange
+    else if inGold or inShallow
+        enterTxt := &quot;ادخل شراء الآن&quot;
+        enterCol := color.lime
+    else if peakLive or atEnd or extended
+        enterTxt := &quot;شراء — لا تدخل هنا، انتظر الذهبية&quot;
+        enterCol := color.yellow
+    else
+        enterTxt := &quot;شراء — ادخل في المنطقة الذهبية&quot;
+        enterCol := color.yellow
+else if rec == &quot;بيع&quot;
+    if blockedFlip
+        enterTxt := &quot;لا تدخل — انتظر تأكيد&quot;
+        enterCol := color.orange
+    else if inGold or inShallow
+        enterTxt := &quot;ادخل بيع الآن&quot;
+        enterCol := color.red
+    else if peakLive or atEnd or extended
+        enterTxt := &quot;بيع — لا تدخل هنا، انتظر الذهبية&quot;
+        enterCol := color.yellow
+    else
+        enterTxt := &quot;بيع — ادخل في المنطقة الذهبية&quot;
+        enterCol := color.yellow
+else if blockedFlip
+    enterTxt := &quot;لا تدخل — الموجة تمنع العكس&quot;
+    enterCol := color.orange
+recShow = rec + &quot; → &quot; + enterTxt
+
 // ══════════════════════════════════════════════════════════════
 // الرسم
 // ══════════════════════════════════════════════════════════════
@@ -1314,10 +1354,10 @@ var table t = table.new(position.top_right, 2, 19, border_width=1)
 
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 18)
-    table.cell(t, 0, 0, &quot;MEXC Structure v2.41&quot;, bgcolor=color.blue, text_color=color.white, text_size=tblSz)
+    table.cell(t, 0, 0, &quot;MEXC Structure v2.42&quot;, bgcolor=color.blue, text_color=color.white, text_size=tblSz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=tblSz)
-    table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=tblSz)
-    table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=tblSz)
+    table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=tblSz)
+    table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=tblSz)
     table.cell(t, 0, 2, &quot;نصيحة&quot;, bgcolor=color.gray, text_size=tblSz)
     table.cell(t, 1, 2, advice, text_color=adviceCol, text_size=tblSz)
     table.cell(t, 0, 3, &quot;صفقة MEXC&quot;, bgcolor=color.gray, text_size=tblSz)

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Flow v7.25</title>
+<title>Flow v7.26</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Flow v7.25</h1>
+<h1>Flow v7.26</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Flow – 5m/15m v7.25&quot;, overlay=true, max_lines_count=15)
+indicator(&quot;MEXC Flow – 5m/15m v7.26&quot;, overlay=true, max_lines_count=15)
 
 // ══════════════════════════════════════════════════════════════
 // الإعدادات  (كما هي)
@@ -1459,14 +1459,58 @@ newsMixTxt = newsPricedTxt + &quot; | &quot; + statTxt
 htfCvdTxt = htfText + &quot; | &quot; + cvdText
 sz = size.small
 
+enterTxt = &quot;لا تدخل&quot;
+enterCol = color.gray
+if mxLive
+    if (mxLiveLong and rec == &quot;بيع&quot;) or (mxLiveShort and rec == &quot;شراء&quot;) or (blockedFlip and rec == &quot;انتظار&quot;)
+        enterTxt := &quot;اخرج فقط — لا تعكس&quot;
+        enterCol := color.orange
+    else
+        enterTxt := &quot;صفقتك قائمة — لا تضيف&quot;
+        enterCol := mxLiveLong ? color.lime : color.red
+else if rec == &quot;شراء&quot;
+    stretchedL = rsi &gt; 72 or (close &gt; bbUpper and not flowLong)
+    readyL = emaUp and aboveFast and htfUp and not stretchedL
+    if blockedFlip
+        enterTxt := &quot;لا تدخل — انتظر تأكيد&quot;
+        enterCol := color.orange
+    else if readyL
+        enterTxt := &quot;ادخل شراء الآن&quot;
+        enterCol := color.lime
+    else if stretchedL
+        enterTxt := &quot;شراء — انتظر رجوع لـ EMA ثم ادخل&quot;
+        enterCol := color.yellow
+    else
+        enterTxt := &quot;شراء — ادخل عند الثبات فوق EMA&quot;
+        enterCol := color.yellow
+else if rec == &quot;بيع&quot;
+    stretchedS = rsi &lt; 28 or (close &lt; bbLower and not flowShort)
+    readyS = emaDn and not aboveFast and not htfUp and not stretchedS
+    if blockedFlip
+        enterTxt := &quot;لا تدخل — انتظر تأكيد&quot;
+        enterCol := color.orange
+    else if readyS
+        enterTxt := &quot;ادخل بيع الآن&quot;
+        enterCol := color.red
+    else if stretchedS
+        enterTxt := &quot;بيع — انتظر رجوع لـ EMA ثم ادخل&quot;
+        enterCol := color.yellow
+    else
+        enterTxt := &quot;بيع — ادخل عند الثبات تحت EMA&quot;
+        enterCol := color.yellow
+else if blockedFlip
+    enterTxt := &quot;لا تدخل — الاتجاه يمنع العكس&quot;
+    enterCol := color.orange
+recShow = rec + &quot; → &quot; + enterTxt
+
 var table t = table.new(position.top_right, 2, 21, border_width=1)
 
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 20)
-    table.cell(t, 0, 0, &quot;MEXC Flow v7.25&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Flow v7.26&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
-    table.cell(t, 0, 1, &quot;التوصية&quot;, bgcolor=color.new(recCol, 20), text_size=sz)
-    table.cell(t, 1, 1, rec, bgcolor=color.new(recCol, 20), text_color=color.white, text_size=sz)
+    table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
+    table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
     table.cell(t, 0, 2, &quot;نصيحة&quot;, bgcolor=color.gray, text_size=sz)
     table.cell(t, 1, 2, advice, text_color=adviceCol, text_size=sz)
     table.cell(t, 0, 3, &quot;صفقة MEXC&quot;, bgcolor=color.gray, text_size=sz)
