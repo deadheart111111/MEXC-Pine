@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.7</title>
+<title>نسخ Scalp v1.8</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.7 — النسخة للاعتماد</h1>
+<h1>Scalp v1.8</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.7&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.8&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -667,7 +667,7 @@ else if runDn
     st := &quot;زخم هبوط&quot;
     stCol := color.red
 
-rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot; + (na(liqLo) or na(liqHi) ? &quot;&quot; : &quot; | سيولة &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;) + &quot;–&quot; + str.tostring(liqHi, &quot;#.##&quot;))
+rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot;
 rngCol = inRange or flagUp or flagDn ? color.orange : runUp ? color.lime : runDn ? color.red : color.gray
 
 candleTxt = hammer1 ? &quot;مطرقة | رفض قاع&quot; : star1 ? &quot;نجم | رفض قمة&quot; : sweepLoC ? &quot;كنس قاع مغلق&quot; : sweepHiC ? &quot;كنس قمة مغلق&quot; : &quot;عادية&quot;
@@ -679,7 +679,7 @@ whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;�
 whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
 rvolText = bullImpulse and strongVol ? &quot;دفعة + حجم | صعود&quot; : bearImpulse and strongVol ? &quot;دفعة + حجم | هبوط&quot; : strongVol ? (close &gt; open ? &quot;قوي صعود&quot; : &quot;قوي هبوط&quot;) : weakVol ? &quot;ضعيف&quot; : &quot;عادي&quot;
 rvolCol = flowLong ? color.lime : flowShort ? color.red : weakVol ? color.orange : color.gray
-dirTxt = (tfAgreeBuy ? &quot;متفق صعود&quot; : tfAgreeSell ? &quot;متفق هبوط&quot; : &quot;مختلف&quot;) + &quot; | &quot; + htfName + (htfUp ? &quot; ص&quot; : &quot; ه&quot;) + &quot; · 15م &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;) + (btcUp ? &quot; · BTC ص&quot; : &quot; · BTC ه&quot;)
+dirTxt = (tfAgreeBuy ? &quot;متفق صعود&quot; : tfAgreeSell ? &quot;متفق هبوط&quot; : &quot;مختلف&quot;) + &quot; | &quot; + htfName + (htfUp ? &quot; ص&quot; : &quot; ه&quot;) + (htfTF == &quot;15&quot; or timeframe.in_seconds() &gt;= 900 ? &quot;&quot; : &quot; · 15م &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;)) + (btcUp ? &quot; · BTC ص&quot; : &quot; · BTC ه&quot;)
 dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
@@ -792,11 +792,11 @@ else if (sweepHi or sweepLiqHi) and not closedOk
     enterTxt := &quot;كنس قمة يتشكل — ادخل بعد إغلاق هذه الشمعة&quot;
     enterCol := color.yellow
 else if brkUpLive and not closedOk
-    enterTxt := &quot;كسر يتشكل — ادخل بعد إغلاق فوق &quot; + hiStr
-    enterCol := color.yellow
+    enterTxt := weakVol ? &quot;كسر فوق &quot; + hiStr + &quot; بلا حجم — لا تدخل&quot; : &quot;كسر يتشكل — ادخل بعد إغلاق فوق &quot; + hiStr
+    enterCol := weakVol ? color.orange : color.yellow
 else if brkDnLive and not closedOk
-    enterTxt := &quot;كسر يتشكل — ادخل بعد إغلاق تحت &quot; + loStr
-    enterCol := color.yellow
+    enterTxt := weakVol ? &quot;كسر تحت &quot; + loStr + &quot; بلا حجم — لا تدخل&quot; : &quot;كسر يتشكل — ادخل بعد إغلاق تحت &quot; + loStr
+    enterCol := weakVol ? color.orange : color.yellow
 else if pullBuyLive and not closedOk
     enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق فوق &quot; + emaStr
     enterCol := color.yellow
@@ -1132,10 +1132,11 @@ if showBox and barstate.islast
     lnLo := line.new(bar_index - workLen, boxLo, bar_index + 3, boxLo, color=color.new(color.orange, 0), width=2, style=line.style_dashed)
     lnMd := line.new(bar_index - workLen, boxMid, bar_index + 3, boxMid, color=color.new(color.gray, 30), width=1, style=line.style_dotted)
     bx := box.new(bar_index - workLen, boxHi, bar_index + 3, boxLo, bgcolor=color.new(inRange or flagUp or flagDn ? color.orange : color.gray, 92), border_color=color.new(color.orange, 70), border_width=1)
-    if not na(liqHi) and not na(liqLo)
+    if not na(liqHi) and math.abs(liqHi - close) &lt;= atrN * 8
         lnLiqH := line.new(bar_index - 40, liqHi, bar_index + 6, liqHi, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
-        lnLiqL := line.new(bar_index - 40, liqLo, bar_index + 6, liqLo, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
         lbLiqH := label.new(bar_index + 6, liqHi, &quot;قمة &quot; + liqNm, color=color.new(#9C27B0, 0), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+    if not na(liqLo) and math.abs(liqLo - close) &lt;= atrN * 8
+        lnLiqL := line.new(bar_index - 40, liqLo, bar_index + 6, liqLo, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
         lbLiqL := label.new(bar_index + 6, liqLo, &quot;قاع &quot; + liqNm, color=color.new(#9C27B0, 0), textcolor=color.white, style=label.style_label_left, size=size.tiny)
 
 drawTrade = showTrade and (mxOpen or enterNowBuy or enterNowSell)
@@ -1163,42 +1164,44 @@ if barstate.islast
 
 bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
 
-var table t = table.new(position.top_right, 2, 16, border_width=1)
+var table t = table.new(position.top_right, 2, 16, bgcolor=color.new(#111111, 0), border_width=1, border_color=color.new(#444444, 0), frame_color=color.new(#444444, 0))
 if showTable and barstate.islast
+    bgL = color.new(#2c2c2c, 0)
+    bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.7&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.8&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
-    table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
-    table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
-    table.cell(t, 0, 2, &quot;الحالة&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 2, st + &quot; | &quot; + advice, text_color=stCol, text_size=sz)
-    table.cell(t, 0, 3, &quot;النطاق&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 3, rngTxt, text_color=rngCol, text_size=sz)
-    table.cell(t, 0, 4, &quot;الاتجاه&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 4, dirTxt, text_color=dirCol, text_size=sz)
-    table.cell(t, 0, 5, &quot;وقف / هدف&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 5, lvTxt, text_color=lvCol, text_size=sz)
-    table.cell(t, 0, 6, &quot;صفقة MEXC&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 6, mxSideTxt, text_color=mxSideCol, text_size=sz)
-    table.cell(t, 0, 7, &quot;الربح&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 7, mxPnlLiqTxt, text_color=mxPnlCol, text_size=sz)
-    table.cell(t, 0, 8, &quot;الحجم&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 8, rvolText, text_color=rvolCol, text_size=sz)
-    table.cell(t, 0, 9, &quot;تدفق كبير&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 9, whaleTxt, text_color=whaleCol, text_size=sz)
-    table.cell(t, 0, 10, &quot;شمعات&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 10, candleTxt, text_color=candleCol, text_size=sz)
-    table.cell(t, 0, 11, &quot;الجلسة&quot;, bgcolor=color.gray, text_size=sz)
-    table.cell(t, 1, 11, sessTxt, text_color=sessCol, text_size=sz)
+    table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 2, &quot;الحالة&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 2, st + &quot; | &quot; + advice, bgcolor=bgV, text_color=stCol, text_size=sz)
+    table.cell(t, 0, 3, &quot;النطاق&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 3, rngTxt, bgcolor=bgV, text_color=rngCol, text_size=sz)
+    table.cell(t, 0, 4, &quot;الاتجاه&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 4, dirTxt, bgcolor=bgV, text_color=dirCol, text_size=sz)
+    table.cell(t, 0, 5, &quot;وقف / هدف&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 5, lvTxt, bgcolor=bgV, text_color=lvCol, text_size=sz)
+    table.cell(t, 0, 6, &quot;صفقة MEXC&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 6, mxSideTxt, bgcolor=bgV, text_color=mxSideCol, text_size=sz)
+    table.cell(t, 0, 7, &quot;الربح&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 7, mxPnlLiqTxt, bgcolor=bgV, text_color=mxPnlCol, text_size=sz)
+    table.cell(t, 0, 8, &quot;الحجم&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 8, rvolText, bgcolor=bgV, text_color=rvolCol, text_size=sz)
+    table.cell(t, 0, 9, &quot;تدفق كبير&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 9, whaleTxt, bgcolor=bgV, text_color=whaleCol, text_size=sz)
+    table.cell(t, 0, 10, &quot;شمعات&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 10, candleTxt, bgcolor=bgV, text_color=candleCol, text_size=sz)
+    table.cell(t, 0, 11, &quot;الجلسة&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 11, sessTxt, bgcolor=bgV, text_color=sessCol, text_size=sz)
     table.cell(t, 0, 12, &quot;أقرب خبر&quot;, bgcolor=color.new(#37474F, 0), text_color=color.white, text_size=sz)
     table.cell(t, 1, 12, newsNearTxt, bgcolor=color.new(#37474F, 0), text_color=newsCol, text_size=sz)
     if newsPanel
-        table.cell(t, 0, 13, &quot;اتجاه الخبر&quot;, bgcolor=color.gray, text_size=sz)
-        table.cell(t, 1, 13, newsDirRngTxt, text_color=newsDirCol, text_size=sz)
-        table.cell(t, 0, 14, &quot;نتيجة الخبر&quot;, bgcolor=color.gray, text_size=sz)
-        table.cell(t, 1, 14, newsResTxt, text_color=newsResCol, text_size=sz)
-        table.cell(t, 0, 15, &quot;تسعير SOL&quot;, bgcolor=color.gray, text_size=sz)
-        table.cell(t, 1, 15, newsMixTxt, text_color=statCol, text_size=sz)
+        table.cell(t, 0, 13, &quot;اتجاه الخبر&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+        table.cell(t, 1, 13, newsDirRngTxt, bgcolor=bgV, text_color=newsDirCol, text_size=sz)
+        table.cell(t, 0, 14, &quot;نتيجة الخبر&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+        table.cell(t, 1, 14, newsResTxt, bgcolor=bgV, text_color=newsResCol, text_size=sz)
+        table.cell(t, 0, 15, &quot;تسعير SOL&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+        table.cell(t, 1, 15, newsMixTxt, bgcolor=bgV, text_color=statCol, text_size=sz)
 
 alertcondition(enterNowBuy and not enterNowBuy[1], &quot;شراء&quot;, &quot;سكالب شراء الآن&quot;)
 alertcondition(enterNowSell and not enterNowSell[1], &quot;بيع&quot;, &quot;سكالب بيع الآن&quot;)
