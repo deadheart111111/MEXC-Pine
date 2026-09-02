@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.4</title>
+<title>نسخ Scalp v1.5</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.4</h1>
+<h1>Scalp v1.5</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.4&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.5&quot;, overlay=true, max_lines_count=24, max_labels_count=8, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -27,6 +27,7 @@ rsiLen     = input.int(7,  &quot;RSI&quot;)
 volLen     = input.int(20, &quot;Volume SMA&quot;)
 showTable  = input.bool(true, &quot;إظهار الجدول&quot;)
 showBox    = input.bool(true, &quot;رسم النطاق&quot;)
+showTrade  = input.bool(true, &quot;رسم الصفقة&quot;)
 
 grpMx = &quot;صفقة MEXC — انسخ Size(Cont)&quot;
 mxSide   = input.string(&quot;شراء&quot;, &quot;الاتجاه&quot;, options=[&quot;شراء&quot;, &quot;بيع&quot;], group=grpMx)
@@ -740,9 +741,6 @@ else if mxLive
     else
         enterTxt := &quot;صفقتك قائمة — لا تضيف&quot;
         enterCol := mxLiveLong ? color.lime : color.red
-else if isHighImpact
-    enterTxt := &quot;لا تدخل — نافذة خبر&quot;
-    enterCol := color.red
 else if brkUpLive and not closedOk
     enterTxt := &quot;كسر يتشكل — ادخل بعد إغلاق فوق &quot; + hiStr
     enterCol := color.yellow
@@ -995,17 +993,29 @@ if hasTrade and not na(slP)
     if slHitsLiq
         lvCol := color.orange
 lockNow = mxOpen and mxPnl &gt; 0 and math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.45, mxEntry * 0.0035)
-newsBlockEnter = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
+hardNews = nearestName == &quot;NFP&quot; or nearestName == &quot;FOMC&quot; or nearestName == &quot;FOMC-P&quot; or nearestName == &quot;CPI&quot; or nearestName == &quot;PPI&quot; or nearestName == &quot;PCE&quot; or nearestName == &quot;جاكسون هول&quot; or nearestName == &quot;محضر FOMC&quot;
+newsSoon = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
+qualityBuy = tfAgreeBuy and not weakVol and (brkUp or pullBuy or reclaimLo or (sweepLoC and hammer1))
+qualitySell = tfAgreeSell and not weakVol and (brkDn or pullSell or reclaimHi or (sweepHiC and star1))
 thinSess = sessName == &quot;سيولة ضعيفة&quot;
 if not (failNow or unstLong or unstShort)
     if mxOpen and lockNow
         enterTxt := &quot;اقفل نصف | حرّك الوقف فوق الدخول&quot;
         enterCol := color.yellow
-    else if newsBlockEnter and not mxOpen
-        enterTxt := &quot;لا تدخل — خبر خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
+    else if isHighImpact and not mxOpen and not ((enterNowBuy and qualityBuy) or (enterNowSell and qualitySell))
+        enterTxt := &quot;لا تدخل — نافذة خبر&quot;
         enterCol := color.red
         enterNowBuy := false
         enterNowSell := false
+    else if isHighImpact and not mxOpen and (enterNowBuy or enterNowSell)
+        enterTxt := enterTxt + &quot; | بحذر نافذة &quot; + nearestName
+    else if newsSoon and hardNews and not mxOpen and not ((enterNowBuy and qualityBuy) or (enterNowSell and qualitySell))
+        enterTxt := &quot;لا تدخل — &quot; + nearestName + &quot; خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
+        enterCol := color.red
+        enterNowBuy := false
+        enterNowSell := false
+    else if newsSoon and (enterNowBuy or enterNowSell)
+        enterTxt := enterTxt + &quot; | بحذر &quot; + nearestName + &quot; خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
     else if enterNowBuy and thinSess
         enterTxt := &quot;لا تدخل — سيولة ضعيفة&quot;
         enterCol := color.orange
@@ -1031,6 +1041,12 @@ recShow := rec + &quot; → &quot; + enterTxt
 var line lnHi = na
 var line lnLo = na
 var line lnMd = na
+var line lnEn = na
+var line lnSl = na
+var line lnTp = na
+var label lbEn = na
+var label lbSl = na
+var label lbTp = na
 var box bx = na
 if showBox and barstate.islast
     if not na(lnHi)
@@ -1046,15 +1062,35 @@ if showBox and barstate.islast
     lnMd := line.new(bar_index - workLen, boxMid, bar_index + 3, boxMid, color=color.new(color.gray, 30), width=1, style=line.style_dotted)
     bx := box.new(bar_index - workLen, boxHi, bar_index + 3, boxLo, bgcolor=color.new(inRange or flagUp or flagDn ? color.orange : color.gray, 92), border_color=color.new(color.orange, 70), border_width=1)
 
-plot(showBox ? slP : na, &quot;وقف&quot;, color=color.red, style=plot.style_linebr, linewidth=1)
-plot(showBox ? tpP : na, &quot;هدف&quot;, color=color.lime, style=plot.style_linebr, linewidth=1)
+drawTrade = showTrade and (mxOpen or enterNowBuy or enterNowSell)
+enPx = mxOpen ? mxEntry : close
+if barstate.islast
+    if not na(lnEn)
+        line.delete(lnEn)
+    if not na(lnSl)
+        line.delete(lnSl)
+    if not na(lnTp)
+        line.delete(lnTp)
+    if not na(lbEn)
+        label.delete(lbEn)
+    if not na(lbSl)
+        label.delete(lbSl)
+    if not na(lbTp)
+        label.delete(lbTp)
+    if drawTrade and not na(slP) and not na(tpP)
+        lnEn := line.new(bar_index - 2, enPx, bar_index + 8, enPx, color=color.aqua, width=2)
+        lnSl := line.new(bar_index - 2, slP, bar_index + 8, slP, color=color.red, width=2)
+        lnTp := line.new(bar_index - 2, tpP, bar_index + 8, tpP, color=color.lime, width=2)
+        lbEn := label.new(bar_index + 8, enPx, mxOpen ? &quot;دخول صفقتك&quot; : &quot;دخول&quot;, color=color.aqua, textcolor=color.black, style=label.style_label_left, size=size.small)
+        lbSl := label.new(bar_index + 8, slP, &quot;وقف&quot;, color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+        lbTp := label.new(bar_index + 8, tpP, &quot;هدف&quot;, color=color.lime, textcolor=color.black, style=label.style_label_left, size=size.small)
 
 bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
 
 var table t = table.new(position.top_right, 2, 16, border_width=1)
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.4&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.5&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
