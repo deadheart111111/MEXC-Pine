@@ -14,7 +14,7 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.6 — سيولة الجلسة</h1>
+<h1>Scalp v1.6</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
@@ -750,7 +750,7 @@ if bar_index &lt; failUntil
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 pullPx = rec == &quot;شراء&quot; ? math.max(emaFast, boxLo) : rec == &quot;بيع&quot; ? math.min(emaFast, boxHi) : na
 slP = rec == &quot;شراء&quot; ? math.min(not na(liqLo) and (reclaimLiqLo or sweepLiqLoC) ? liqLo : boxLo, low[1]) - atrN * 0.10 : rec == &quot;بيع&quot; ? math.max(not na(liqHi) and (reclaimLiqHi or sweepLiqHiC) ? liqHi : boxHi, high[1]) + atrN * 0.10 : na
-tpP = rec == &quot;شراء&quot; ? (reclaimLiqLo or sweepLiqLoC ? nz(liqHi, boxHi) : nearLo or st == &quot;كنس قاع&quot; or str.startswith(st, &quot;كنس قاع&quot;) ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (reclaimLiqHi or sweepLiqHiC ? nz(liqLo, boxLo) : nearHi or st == &quot;كنس قمة&quot; or str.startswith(st, &quot;كنس قمة&quot;) ? boxLo : close - atrN * 1.05) : na
+tpP = rec == &quot;شراء&quot; ? (nearLo or reclaimLiqLo or sweepLiqLoC or str.startswith(st, &quot;كنس قاع&quot;) ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (nearHi or reclaimLiqHi or sweepLiqHiC or str.startswith(st, &quot;كنس قمة&quot;) ? boxLo : close - atrN * 1.05) : na
 lvTxt = hasTrade and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = hasTrade ? rec == &quot;شراء&quot; ? color.lime : color.red : color.gray
 
