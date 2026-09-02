@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.5</title>
+<title>نسخ Scalp v1.6</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.5</h1>
+<h1>Scalp v1.6 — سيولة الجلسة</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.5&quot;, overlay=true, max_lines_count=24, max_labels_count=8, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.6&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -99,6 +99,30 @@ if not na(tLon) and na(tLon[1])
     pxLon := open
 if not na(tNy) and na(tNy[1])
     pxNy := open
+inAsiaBar = not na(tAsia)
+inLonBar = not na(tLon)
+inNyBar = not na(tNy)
+var float asiaHi = na
+var float asiaLo = na
+var float lonHi = na
+var float lonLo = na
+if inAsiaBar and na(tAsia[1])
+    asiaHi := high
+    asiaLo := low
+else if inAsiaBar
+    asiaHi := math.max(nz(asiaHi, high), high)
+    asiaLo := math.min(nz(asiaLo, low), low)
+if inLonBar and na(tLon[1])
+    lonHi := high
+    lonLo := low
+else if inLonBar
+    lonHi := math.max(nz(lonHi, high), high)
+    lonLo := math.min(nz(lonLo, low), low)
+liqNm = inNyBar ? &quot;لندن&quot; : inLonBar ? &quot;آسيا&quot; : &quot;لندن&quot;
+liqHi = inNyBar ? lonHi : inLonBar ? asiaHi : lonHi
+liqLo = inNyBar ? lonLo : inLonBar ? asiaLo : lonLo
+liqHi := na(liqHi) ? asiaHi : liqHi
+liqLo := na(liqLo) ? asiaLo : liqLo
 f_sessDir(px) =&gt; na(px) ? &quot;محايد&quot; : close &gt; px ? &quot;صعود&quot; : close &lt; px ? &quot;هبوط&quot; : &quot;محايد&quot;
 f_sessCol(d) =&gt; d == &quot;صعود&quot; ? color.lime : d == &quot;هبوط&quot; ? color.red : color.gray
 tsLonOpen = f_nextTsTZ(tzLon, 8, 0)
@@ -148,7 +172,7 @@ else
     sessDir := &quot;—&quot;
     sessLeftTs := tsAsiaOpen
     sessCol := color.gray
-sessTxt = sessName + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; | &quot; + sessDir) + &quot; · &quot; + f_leftStr(sessLeftTs)
+sessTxt = sessName + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; | &quot; + sessDir) + (na(liqHi) or na(liqLo) ? &quot;&quot; : &quot; | سيولة &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;) + &quot;–&quot; + str.tostring(liqHi, &quot;#.##&quot;)) + &quot; · &quot; + f_leftStr(sessLeftTs)
 
 f_amsClock(ts) =&gt;
     sameDay = year(ts, tzAMS) == year(timenow, tzAMS) and month(ts, tzAMS) == month(timenow, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(timenow, tzAMS)
@@ -567,6 +591,14 @@ sweepLo = low &lt; boxLo and close &gt; boxLo and close &gt; open
 sweepHi = high &gt; boxHi and close &lt; boxHi and close &lt; open
 sweepLoC = low[1] &lt; boxLo[1] and close[1] &gt; boxLo[1] and close[1] &gt; open[1]
 sweepHiC = high[1] &gt; boxHi[1] and close[1] &lt; boxHi[1] and close[1] &lt; open[1]
+sweepLiqLo = not na(liqLo) and low &lt; liqLo and close &gt; liqLo and close &gt; open
+sweepLiqHi = not na(liqHi) and high &gt; liqHi and close &lt; liqHi and close &lt; open
+sweepLiqLoC = not na(liqLo) and low[1] &lt; liqLo and close[1] &gt; liqLo and close[1] &gt; open[1]
+sweepLiqHiC = not na(liqHi) and high[1] &gt; liqHi and close[1] &lt; liqHi and close[1] &lt; open[1]
+reclaimLiqLo = sweepLiqLoC and close &gt;= close[1] and close &gt; liqLo
+reclaimLiqHi = sweepLiqHiC and close &lt;= close[1] and close &lt; liqHi
+nearLiqLo = not na(liqLo) and (close - liqLo) &lt;= atrN * 0.40
+nearLiqHi = not na(liqHi) and (liqHi - close) &lt;= atrN * 0.40
 reclaimLo = sweepLoC and close &gt;= close[1] and close &gt; boxLo
 reclaimHi = sweepHiC and close &lt;= close[1] and close &lt; boxHi
 closedOk = barstate.isconfirmed
@@ -591,6 +623,12 @@ if dispUp
     stCol := color.lime
 else if dispDn
     st := &quot;اندفاع هبوط&quot;
+    stCol := color.red
+else if sweepLiqLo or sweepLiqLoC
+    st := &quot;كنس قاع &quot; + liqNm
+    stCol := color.lime
+else if sweepLiqHi or sweepLiqHiC
+    st := &quot;كنس قمة &quot; + liqNm
     stCol := color.red
 else if sweepLo or sweepLoC
     st := &quot;كنس قاع&quot;
@@ -626,7 +664,7 @@ else if runDn
     st := &quot;زخم هبوط&quot;
     stCol := color.red
 
-rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot;
+rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot; + (na(liqLo) or na(liqHi) ? &quot;&quot; : &quot; | سيولة &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;) + &quot;–&quot; + str.tostring(liqHi, &quot;#.##&quot;))
 rngCol = inRange or flagUp or flagDn ? color.orange : runUp ? color.lime : runDn ? color.red : color.gray
 
 candleTxt = hammer1 ? &quot;مطرقة | رفض قاع&quot; : star1 ? &quot;نجم | رفض قمة&quot; : sweepLoC ? &quot;كنس قاع مغلق&quot; : sweepHiC ? &quot;كنس قمة مغلق&quot; : &quot;عادية&quot;
@@ -642,9 +680,9 @@ dirTxt = (tfAgreeBuy ? &quot;متفق صعود&quot; : tfAgreeSell ? &quot;مت�
 dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
-if pullBuy or reclaimLo or (sweepLoC and hammer1) or brkUp
+if reclaimLiqLo or (sweepLiqLoC and hammer1) or pullBuy or reclaimLo or (sweepLoC and hammer1) or brkUp
     raw := &quot;شراء&quot;
-else if pullSell or reclaimHi or (sweepHiC and star1) or brkDn
+else if reclaimLiqHi or (sweepLiqHiC and star1) or pullSell or reclaimHi or (sweepHiC and star1) or brkDn
     raw := &quot;بيع&quot;
 else if runUp and htfUp
     raw := &quot;شراء&quot;
@@ -685,16 +723,16 @@ var int sigBar = na
 var string sigKind = &quot;&quot;
 var float sigLvl = na
 var int failUntil = 0
-trigBuy = rec == &quot;شراء&quot; and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1))
-trigSell = rec == &quot;بيع&quot; and (pullSell or reclaimHi or brkDn or (sweepHiC and star1))
+trigBuy = rec == &quot;شراء&quot; and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+trigSell = rec == &quot;بيع&quot; and (pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 if trigBuy and closedOk
     sigBar := bar_index
-    sigKind := brkUp ? &quot;brkL&quot; : (reclaimLo or sweepLoC) ? &quot;swpL&quot; : &quot;pullL&quot;
-    sigLvl := brkUp ? boxHi : math.min(boxLo, emaFast)
+    sigKind := brkUp ? &quot;brkL&quot; : (reclaimLiqLo or sweepLiqLoC or reclaimLo or sweepLoC) ? &quot;swpL&quot; : &quot;pullL&quot;
+    sigLvl := brkUp ? boxHi : math.min(nz(liqLo, boxLo), emaFast)
 if trigSell and closedOk
     sigBar := bar_index
-    sigKind := brkDn ? &quot;brkS&quot; : (reclaimHi or sweepHiC) ? &quot;swpS&quot; : &quot;pullS&quot;
-    sigLvl := brkDn ? boxLo : math.max(boxHi, emaFast)
+    sigKind := brkDn ? &quot;brkS&quot; : (reclaimLiqHi or sweepLiqHiC or reclaimHi or sweepHiC) ? &quot;swpS&quot; : &quot;pullS&quot;
+    sigLvl := brkDn ? boxLo : math.max(nz(liqHi, boxHi), emaFast)
 failBuy = not na(sigBar) and (sigKind == &quot;brkL&quot; or sigKind == &quot;pullL&quot; or sigKind == &quot;swpL&quot;) and bar_index &gt; sigBar and bar_index &lt;= sigBar + 3 and closedOk and close &lt; sigLvl
 failSell = not na(sigBar) and (sigKind == &quot;brkS&quot; or sigKind == &quot;pullS&quot; or sigKind == &quot;swpS&quot;) and bar_index &gt; sigBar and bar_index &lt;= sigBar + 3 and closedOk and close &gt; sigLvl
 failNow = failBuy or failSell
@@ -711,13 +749,13 @@ if bar_index &lt; failUntil
 
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 pullPx = rec == &quot;شراء&quot; ? math.max(emaFast, boxLo) : rec == &quot;بيع&quot; ? math.min(emaFast, boxHi) : na
-slP = rec == &quot;شراء&quot; ? math.min(boxLo, low[1]) - atrN * 0.10 : rec == &quot;بيع&quot; ? math.max(boxHi, high[1]) + atrN * 0.10 : na
-tpP = rec == &quot;شراء&quot; ? (nearLo or st == &quot;كنس قاع&quot; ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (nearHi or st == &quot;كنس قمة&quot; ? boxLo : close - atrN * 1.05) : na
+slP = rec == &quot;شراء&quot; ? math.min(not na(liqLo) and (reclaimLiqLo or sweepLiqLoC) ? liqLo : boxLo, low[1]) - atrN * 0.10 : rec == &quot;بيع&quot; ? math.max(not na(liqHi) and (reclaimLiqHi or sweepLiqHiC) ? liqHi : boxHi, high[1]) + atrN * 0.10 : na
+tpP = rec == &quot;شراء&quot; ? (reclaimLiqLo or sweepLiqLoC ? nz(liqHi, boxHi) : nearLo or st == &quot;كنس قاع&quot; or str.startswith(st, &quot;كنس قاع&quot;) ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (reclaimLiqHi or sweepLiqHiC ? nz(liqLo, boxLo) : nearHi or st == &quot;كنس قمة&quot; or str.startswith(st, &quot;كنس قمة&quot;) ? boxLo : close - atrN * 1.05) : na
 lvTxt = hasTrade and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = hasTrade ? rec == &quot;شراء&quot; ? color.lime : color.red : color.gray
 
-enterNowBuy = rec == &quot;شراء&quot; and not mxLive and not failNow and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1))
-enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and (pullSell or reclaimHi or brkDn or (sweepHiC and star1))
+enterNowBuy = rec == &quot;شراء&quot; and not mxLive and not failNow and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and (pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 hiStr = str.tostring(boxHi, &quot;#.##&quot;)
 loStr = str.tostring(boxLo, &quot;#.##&quot;)
 emaStr = str.tostring(emaFast, &quot;#.##&quot;)
@@ -754,10 +792,10 @@ else if pullSellLive and not closedOk
     enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق تحت &quot; + emaStr
     enterCol := color.yellow
 else if enterNowBuy
-    enterTxt := brkUp ? &quot;ادخل شراء الآن | كسر &quot; + hiStr : st == &quot;كنس قاع&quot; ? &quot;ادخل شراء الآن | كنس القاع&quot; : &quot;ادخل شراء الآن | رجوع العلم&quot;
+    enterTxt := reclaimLiqLo or sweepLiqLoC ? &quot;ادخل شراء الآن | كنس قاع &quot; + liqNm : brkUp ? &quot;ادخل شراء الآن | كسر &quot; + hiStr : st == &quot;كنس قاع&quot; or str.startswith(st, &quot;كنس قاع&quot;) ? &quot;ادخل شراء الآن | كنس القاع&quot; : &quot;ادخل شراء الآن | رجوع العلم&quot;
     enterCol := color.lime
 else if enterNowSell
-    enterTxt := brkDn ? &quot;ادخل بيع الآن | كسر &quot; + loStr : st == &quot;كنس قمة&quot; ? &quot;ادخل بيع الآن | كنس القمة&quot; : &quot;ادخل بيع الآن | رجوع العلم&quot;
+    enterTxt := reclaimLiqHi or sweepLiqHiC ? &quot;ادخل بيع الآن | كنس قمة &quot; + liqNm : brkDn ? &quot;ادخل بيع الآن | كسر &quot; + loStr : st == &quot;كنس قمة&quot; or str.startswith(st, &quot;كنس قمة&quot;) ? &quot;ادخل بيع الآن | كنس القمة&quot; : &quot;ادخل بيع الآن | رجوع العلم&quot;
     enterCol := color.red
 else if dispUp or stretchedUp
     enterTxt := &quot;لا تدخل أثناء الاندفاع | انتظر رجوع &quot; + emaStr
@@ -765,6 +803,12 @@ else if dispUp or stretchedUp
 else if dispDn or stretchedDn
     enterTxt := &quot;لا تدخل أثناء الاندفاع | انتظر رجوع &quot; + emaStr
     enterCol := color.orange
+else if rec == &quot;بيع&quot; and nearLiqHi
+    enterTxt := &quot;بيع — انتظر كنس قمة &quot; + liqNm + &quot; &quot; + str.tostring(liqHi, &quot;#.##&quot;)
+    enterCol := color.yellow
+else if rec == &quot;شراء&quot; and nearLiqLo
+    enterTxt := &quot;شراء — انتظر كنس قاع &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;)
+    enterCol := color.yellow
 else if rec == &quot;شراء&quot; and nearHi
     enterTxt := &quot;شراء — لا تدخل عند القمة | كسر &quot; + hiStr + &quot; أو رجوع &quot; + emaStr
     enterCol := color.yellow
@@ -995,8 +1039,8 @@ if hasTrade and not na(slP)
 lockNow = mxOpen and mxPnl &gt; 0 and math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.45, mxEntry * 0.0035)
 hardNews = nearestName == &quot;NFP&quot; or nearestName == &quot;FOMC&quot; or nearestName == &quot;FOMC-P&quot; or nearestName == &quot;CPI&quot; or nearestName == &quot;PPI&quot; or nearestName == &quot;PCE&quot; or nearestName == &quot;جاكسون هول&quot; or nearestName == &quot;محضر FOMC&quot;
 newsSoon = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
-qualityBuy = tfAgreeBuy and not weakVol and (brkUp or pullBuy or reclaimLo or (sweepLoC and hammer1))
-qualitySell = tfAgreeSell and not weakVol and (brkDn or pullSell or reclaimHi or (sweepHiC and star1))
+qualityBuy = tfAgreeBuy and not weakVol and (brkUp or pullBuy or reclaimLo or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+qualitySell = tfAgreeSell and not weakVol and (brkDn or pullSell or reclaimHi or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 thinSess = sessName == &quot;سيولة ضعيفة&quot;
 if not (failNow or unstLong or unstShort)
     if mxOpen and lockNow
@@ -1047,6 +1091,10 @@ var line lnTp = na
 var label lbEn = na
 var label lbSl = na
 var label lbTp = na
+var line lnLiqH = na
+var line lnLiqL = na
+var label lbLiqH = na
+var label lbLiqL = na
 var box bx = na
 if showBox and barstate.islast
     if not na(lnHi)
@@ -1057,10 +1105,23 @@ if showBox and barstate.islast
         line.delete(lnMd)
     if not na(bx)
         box.delete(bx)
+    if not na(lnLiqH)
+        line.delete(lnLiqH)
+    if not na(lnLiqL)
+        line.delete(lnLiqL)
+    if not na(lbLiqH)
+        label.delete(lbLiqH)
+    if not na(lbLiqL)
+        label.delete(lbLiqL)
     lnHi := line.new(bar_index - workLen, boxHi, bar_index + 3, boxHi, color=color.new(color.orange, 0), width=2, style=line.style_dashed)
     lnLo := line.new(bar_index - workLen, boxLo, bar_index + 3, boxLo, color=color.new(color.orange, 0), width=2, style=line.style_dashed)
     lnMd := line.new(bar_index - workLen, boxMid, bar_index + 3, boxMid, color=color.new(color.gray, 30), width=1, style=line.style_dotted)
     bx := box.new(bar_index - workLen, boxHi, bar_index + 3, boxLo, bgcolor=color.new(inRange or flagUp or flagDn ? color.orange : color.gray, 92), border_color=color.new(color.orange, 70), border_width=1)
+    if not na(liqHi) and not na(liqLo)
+        lnLiqH := line.new(bar_index - 40, liqHi, bar_index + 6, liqHi, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
+        lnLiqL := line.new(bar_index - 40, liqLo, bar_index + 6, liqLo, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
+        lbLiqH := label.new(bar_index + 6, liqHi, &quot;قمة &quot; + liqNm, color=color.new(#9C27B0, 0), textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        lbLiqL := label.new(bar_index + 6, liqLo, &quot;قاع &quot; + liqNm, color=color.new(#9C27B0, 0), textcolor=color.white, style=label.style_label_left, size=size.tiny)
 
 drawTrade = showTrade and (mxOpen or enterNowBuy or enterNowSell)
 enPx = mxOpen ? mxEntry : close
@@ -1090,7 +1151,7 @@ bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.n
 var table t = table.new(position.top_right, 2, 16, border_width=1)
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.5&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.6&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
