@@ -175,9 +175,13 @@ else
     nextSess := tsLonOpen <= tsAsiaOpen ? "لندن" : "آسيا"
     nextSessTs := tsLonOpen <= tsAsiaOpen ? tsLonOpen : tsAsiaOpen
 dirShow = sessDir == "صعود" ? "فوق الافتتاح" : sessDir == "هبوط" ? "تحت الافتتاح" : "محايد"
-leftVerb = sessLive ? "تنتهي" : "تبدأ"
-sameNext = nextSessTs == sessLeftTs
-sessTxt = sessName + (sessDir == "—" ? "" : " · " + dirShow) + " | " + leftVerb + " " + f_leftStr(sessLeftTs) + (sameNext ? "" : " | ثم " + nextSess + " تبدأ " + f_leftStr(nextSessTs))
+sessClock = f_leftStr(sessLeftTs)
+magTxt = ""
+if not na(liqHi) and liqHi > close and (liqHi - close) <= close * 0.012
+    magTxt := " | أقرب هدف قمة " + liqNm + " " + str.tostring(liqHi, "#.##")
+else if not na(liqLo) and close > liqLo and (close - liqLo) <= close * 0.012
+    magTxt := " | أقرب هدف قاع " + liqNm + " " + str.tostring(liqLo, "#.##")
+sessTxt = sessLive ? sessName + " · تنتهي " + sessClock + (sessDir == "—" ? "" : " | " + dirShow) + magTxt : sessName + " · تبدأ " + sessClock
 
 f_amsClock(ts) =>
     sameDay = year(ts, tzAMS) == year(timenow, tzAMS) and month(ts, tzAMS) == month(timenow, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(timenow, tzAMS)
@@ -523,7 +527,7 @@ htfTF = tfSec <= 180 ? "5" : tfSec <= 300 ? "15" : "60"
 htfFast = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaFastLen), barmerge.gaps_off, barmerge.lookahead_off)
 htfSlow = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaSlowLen), barmerge.gaps_off, barmerge.lookahead_off)
 htfUp = htfFast > htfSlow
-htfName = htfTF == "5" ? "5m" : htfTF == "15" ? "15m" : "1H"
+htfName = htfTF == "5" ? "5د" : htfTF == "15" ? "15د" : "ساعة"
 tf15Up = request.security(syminfo.tickerid, "15", ta.ema(close, emaFastLen) > ta.ema(close, emaSlowLen), barmerge.gaps_off, barmerge.lookahead_off)
 btcUp = request.security("BINANCE:BTCUSDT", "5", ta.ema(close, 5) > ta.ema(close, 13), barmerge.gaps_off, barmerge.lookahead_off)
 tfAgreeBuy = emaUp and htfUp
@@ -620,6 +624,10 @@ pullBuyLive = (runUp or flagUp) and inLowHalf and (hammer1 or holdEmaL or holdVw
 pullSellLive = (runDn or flagDn) and inHighHalf and (star1 or holdEmaS or holdVwapS or (nearHi and close < open)) and close < boxHi
 pullBuy = pullBuyLive and closedOk
 pullSell = pullSellLive and closedOk
+edgeBuyLive = tapsLo >= 2 and inLowHalf and nearLo and close > open and close > boxLo and not dispUp and not stretchedUp
+edgeSellLive = tapsHi >= 2 and inHighHalf and nearHi and close < open and close < boxHi and not dispDn and not stretchedDn
+edgeBuy = edgeBuyLive and closedOk
+edgeSell = edgeSellLive and closedOk
 sweepBuyNow = closedOk and ((sweepLo and close > open) or (sweepLiqLo and close > open))
 sweepSellNow = closedOk and ((sweepHi and close < open) or (sweepLiqHi and close < open))
 failWin = tfSec <= 300 ? 1 : 2
@@ -649,6 +657,12 @@ else if brkUp
     stCol := color.lime
 else if brkDn
     st := "كسر هبوط"
+    stCol := color.red
+else if edgeBuy or edgeBuyLive
+    st := "ارتداد من القاع"
+    stCol := color.lime
+else if edgeSell or edgeSellLive
+    st := "ارتداد من القمة"
     stCol := color.red
 else if flagUp
     st := "علم صعود"
@@ -684,13 +698,13 @@ whaleTxt = bigBuy ? "شراء كمية كبيرة" : bigSell ? "بيع كمية 
 whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
 rvolText = bullImpulse and strongVol ? "دفعة + حجم | صعود" : bearImpulse and strongVol ? "دفعة + حجم | هبوط" : strongVol ? (close > open ? "قوي صعود" : "قوي هبوط") : weakVol ? "ضعيف" : "عادي"
 rvolCol = flowLong ? color.lime : flowShort ? color.red : weakVol ? color.orange : color.gray
-dirTxt = (tfAgreeBuy ? "متفق صعود" : tfAgreeSell ? "متفق هبوط" : "مختلف") + " | " + htfName + (htfUp ? " ص" : " ه") + (htfTF == "15" or timeframe.in_seconds() >= 900 ? "" : " · 15م " + (tf15Up ? "ص" : "ه")) + (btcUp ? " · BTC ص" : " · BTC ه")
+dirTxt = (tfAgreeBuy ? "متفق صعود" : tfAgreeSell ? "متفق هبوط" : "مختلف") + " | " + htfName + " " + (htfUp ? "صعود" : "هبوط") + (htfTF == "15" or tfSec >= 900 ? "" : " | 15د " + (tf15Up ? "صعود" : "هبوط")) + " | BTC " + (btcUp ? "صعود" : "هبوط")
 dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
 
 raw = "انتظار"
-if sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or pullBuy or reclaimLo or (sweepLoC and hammer1) or brkUp
+if sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or edgeBuy or pullBuy or reclaimLo or (sweepLoC and hammer1) or brkUp
     raw := "شراء"
-else if sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or pullSell or reclaimHi or (sweepHiC and star1) or brkDn
+else if sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or edgeSell or pullSell or reclaimHi or (sweepHiC and star1) or brkDn
     raw := "بيع"
 else if runUp and htfUp
     raw := "شراء"
@@ -731,8 +745,8 @@ var int sigBar = na
 var string sigKind = ""
 var float sigLvl = na
 var int failUntil = 0
-trigBuy = rec == "شراء" and (sweepBuyNow or pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
-trigSell = rec == "بيع" and (sweepSellNow or pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
+trigBuy = rec == "شراء" and (sweepBuyNow or edgeBuy or pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+trigSell = rec == "بيع" and (sweepSellNow or edgeSell or pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 if trigBuy and closedOk
     sigBar := bar_index
     sigKind := brkUp ? "brkL" : (sweepBuyNow or reclaimLiqLo or sweepLiqLoC or reclaimLo or sweepLoC) ? "swpL" : "pullL"
@@ -765,8 +779,8 @@ slDistPct = hasTrade and not na(slP) and close > 0 ? math.abs(close - slP) / clo
 maxSlPct = 0.70 / mxLev
 slTooFar = slDistPct > maxSlPct
 
-enterNowBuy = rec == "شراء" and not mxLive and not failNow and not slTooFar and (sweepBuyNow or pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
-enterNowSell = rec == "بيع" and not mxLive and not failNow and not slTooFar and (sweepSellNow or pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
+enterNowBuy = rec == "شراء" and not mxLive and not failNow and not slTooFar and (sweepBuyNow or edgeBuy or pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+enterNowSell = rec == "بيع" and not mxLive and not failNow and not slTooFar and (sweepSellNow or edgeSell or pullSell or reclaimHi or brkDn or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 hiStr = str.tostring(boxHi, "#.##")
 loStr = str.tostring(boxLo, "#.##")
 emaStr = str.tostring(emaFast, "#.##")
@@ -796,6 +810,12 @@ else if (sweepLo or sweepLiqLo) and not closedOk
 else if (sweepHi or sweepLiqHi) and not closedOk
     enterTxt := "كنس قمة يتشكل — ادخل بعد إغلاق هذه الشمعة"
     enterCol := color.yellow
+else if edgeBuyLive and not closedOk
+    enterTxt := "ارتداد من القاع يتشكل — ادخل بعد إغلاق هذه الشمعة"
+    enterCol := color.yellow
+else if edgeSellLive and not closedOk
+    enterTxt := "ارتداد من القمة يتشكل — ادخل بعد إغلاق هذه الشمعة"
+    enterCol := color.yellow
 else if brkUpLive and not closedOk
     enterTxt := weakVol ? "كسر فوق " + hiStr + " بلا حجم — لا تدخل" : "كسر يتشكل — ادخل بعد إغلاق فوق " + hiStr
     enterCol := weakVol ? color.orange : color.yellow
@@ -809,10 +829,10 @@ else if pullSellLive and not closedOk
     enterTxt := "رجوع يتشكل — ادخل بعد إغلاق تحت " + emaStr
     enterCol := color.yellow
 else if enterNowBuy
-    enterTxt := sweepBuyNow or reclaimLiqLo or sweepLiqLoC ? "ادخل شراء الآن | كنس " + (sweepLiqLo or reclaimLiqLo or sweepLiqLoC ? liqNm : "القاع") : brkUp ? "ادخل شراء الآن | كسر " + hiStr : "ادخل شراء الآن | رجوع العلم"
+    enterTxt := edgeBuy ? "ادخل شراء الآن | ارتداد من قاع الصندوق " + loStr : sweepBuyNow or reclaimLiqLo or sweepLiqLoC ? "ادخل شراء الآن | كنس " + (sweepLiqLo or reclaimLiqLo or sweepLiqLoC ? liqNm : "القاع") : brkUp ? "ادخل شراء الآن | كسر " + hiStr : "ادخل شراء الآن | رجوع العلم"
     enterCol := color.lime
 else if enterNowSell
-    enterTxt := sweepSellNow or reclaimLiqHi or sweepLiqHiC ? "ادخل بيع الآن | كنس " + (sweepLiqHi or reclaimLiqHi or sweepLiqHiC ? liqNm : "القمة") : brkDn ? "ادخل بيع الآن | كسر " + loStr : "ادخل بيع الآن | رجوع العلم"
+    enterTxt := edgeSell ? "ادخل بيع الآن | ارتداد من قمة الصندوق " + hiStr : sweepSellNow or reclaimLiqHi or sweepLiqHiC ? "ادخل بيع الآن | كنس " + (sweepLiqHi or reclaimLiqHi or sweepLiqHiC ? liqNm : "القمة") : brkDn ? "ادخل بيع الآن | كسر " + loStr : "ادخل بيع الآن | رجوع العلم"
     enterCol := color.red
 else if slTooFar and rec != "انتظار"
     enterTxt := "لا تدخل — الوقف أوسع من الرافعة"
@@ -1088,11 +1108,11 @@ if not (failNow or unstLong or unstShort)
         enterTxt := "لا تدخل — سيولة ضعيفة"
         enterCol := color.orange
         enterNowSell := false
-    else if enterNowBuy and hardBlockBuy and not (sweepLoC or reclaimLo)
+    else if enterNowBuy and hardBlockBuy and not (sweepLoC or reclaimLo or sweepBuyNow or edgeBuy)
         enterTxt := "لا تدخل — الفريم الأكبر هابط"
         enterCol := color.orange
         enterNowBuy := false
-    else if enterNowSell and hardBlockSell and not (sweepHiC or reclaimHi)
+    else if enterNowSell and hardBlockSell and not (sweepHiC or reclaimHi or sweepSellNow or edgeSell)
         enterTxt := "لا تدخل — الفريم الأكبر صاعد"
         enterCol := color.orange
         enterNowSell := false
