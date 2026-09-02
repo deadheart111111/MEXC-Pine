@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.2</title>
+<title>نسخ Scalp v1.3</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.2</h1>
+<h1>Scalp v1.3</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.2&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.3&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -494,6 +494,12 @@ htfFast = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaFastLen), b
 htfSlow = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaSlowLen), barmerge.gaps_off, barmerge.lookahead_off)
 htfUp = htfFast &gt; htfSlow
 htfName = htfTF == &quot;5&quot; ? &quot;5m&quot; : htfTF == &quot;15&quot; ? &quot;15m&quot; : &quot;1H&quot;
+tf15Up = request.security(syminfo.tickerid, &quot;15&quot;, ta.ema(close, emaFastLen) &gt; ta.ema(close, emaSlowLen), barmerge.gaps_off, barmerge.lookahead_off)
+btcUp = request.security(&quot;BINANCE:BTCUSDT&quot;, &quot;5&quot;, ta.ema(close, 5) &gt; ta.ema(close, 13), barmerge.gaps_off, barmerge.lookahead_off)
+tfAgreeBuy = emaUp and htfUp
+tfAgreeSell = emaDn and not htfUp
+hardBlockBuy = not htfUp and tfSec &lt;= 300
+hardBlockSell = htfUp and tfSec &lt;= 300
 
 rngLen = tfSec &lt;= 180 ? 8 : tfSec &lt;= 300 ? 8 : 6
 atrN = nz(atr, close * 0.002)
@@ -629,8 +635,8 @@ whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;�
 whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
 rvolText = bullImpulse and strongVol ? &quot;دفعة + حجم | صعود&quot; : bearImpulse and strongVol ? &quot;دفعة + حجم | هبوط&quot; : strongVol ? (close &gt; open ? &quot;قوي صعود&quot; : &quot;قوي هبوط&quot;) : weakVol ? &quot;ضعيف&quot; : &quot;عادي&quot;
 rvolCol = flowLong ? color.lime : flowShort ? color.red : weakVol ? color.orange : color.gray
-dirTxt = (htfUp ? htfName + &quot; صعود&quot; : htfName + &quot; هبوط&quot;) + &quot; | EMA &quot; + (emaUp ? &quot;صاعد&quot; : &quot;هابط&quot;)
-dirCol = htfUp == emaUp ? (htfUp ? color.lime : color.red) : color.orange
+dirTxt = (tfAgreeBuy ? &quot;متفق صعود&quot; : tfAgreeSell ? &quot;متفق هبوط&quot; : &quot;مختلف&quot;) + &quot; | &quot; + htfName + (htfUp ? &quot; ص&quot; : &quot; ه&quot;) + &quot; · 15م &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;) + (btcUp ? &quot; · BTC ص&quot; : &quot; · BTC ه&quot;)
+dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
 if pullBuy or reclaimLo or (sweepLoC and hammer1) or brkUp
@@ -981,6 +987,48 @@ newsDirRngTxt = newsDirTxt + &quot;  &quot; + pxTxt
 newsMixTxt = newsPricedTxt + &quot; | &quot; + statTxt
 sz = size.small
 
+slHitsLiq = mxOpen and not na(slP) and not na(mxLiq) and (mxLong ? slP &lt;= mxLiq : slP &gt;= mxLiq)
+if hasTrade and not na(slP)
+    lvTxt := &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) + (mxOpen ? (slHitsLiq ? &quot; | الوقف يصفّيك&quot; : &quot; | الوقف قبل التصفية&quot;) : &quot;&quot;)
+    if slHitsLiq
+        lvCol := color.orange
+lockNow = mxOpen and mxPnl &gt; 0 and math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.45, mxEntry * 0.0035)
+newsBlockEnter = nearestLeft &lt;= 30 and nearestLeft &gt; 0 and nearestTs &lt; FAR
+thinSess = sessName == &quot;سيولة ضعيفة&quot;
+if not (failNow or unstLong or unstShort)
+    if mxOpen and lockNow
+        enterTxt := &quot;اقفل نصف | حرّك الوقف فوق الدخول&quot;
+        enterCol := color.yellow
+    else if enterNowBuy and newsBlockEnter
+        enterTxt := &quot;لا تدخل — خبر خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
+        enterCol := color.red
+        enterNowBuy := false
+    else if enterNowSell and newsBlockEnter
+        enterTxt := &quot;لا تدخل — خبر خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
+        enterCol := color.red
+        enterNowSell := false
+    else if enterNowBuy and thinSess
+        enterTxt := &quot;لا تدخل — سيولة ضعيفة&quot;
+        enterCol := color.orange
+        enterNowBuy := false
+    else if enterNowSell and thinSess
+        enterTxt := &quot;لا تدخل — سيولة ضعيفة&quot;
+        enterCol := color.orange
+        enterNowSell := false
+    else if enterNowBuy and hardBlockBuy and not (sweepLoC or reclaimLo)
+        enterTxt := &quot;لا تدخل — الفريم الأكبر هابط&quot;
+        enterCol := color.orange
+        enterNowBuy := false
+    else if enterNowSell and hardBlockSell and not (sweepHiC or reclaimHi)
+        enterTxt := &quot;لا تدخل — الفريم الأكبر صاعد&quot;
+        enterCol := color.orange
+        enterNowSell := false
+    else if enterNowBuy and not btcUp
+        enterTxt := enterTxt + &quot; | بحذر BTC هابط&quot;
+    else if enterNowSell and btcUp
+        enterTxt := enterTxt + &quot; | بحذر BTC صاعد&quot;
+recShow := rec + &quot; → &quot; + enterTxt
+
 var line lnHi = na
 var line lnLo = na
 var line lnMd = na
@@ -1007,7 +1055,7 @@ bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.n
 var table t = table.new(position.top_right, 2, 16, border_width=1)
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.2&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.3&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
@@ -1043,6 +1091,8 @@ if showTable and barstate.islast
 
 alertcondition(enterNowBuy and not enterNowBuy[1], &quot;شراء&quot;, &quot;سكالب شراء الآن&quot;)
 alertcondition(enterNowSell and not enterNowSell[1], &quot;بيع&quot;, &quot;سكالب بيع الآن&quot;)
+alertcondition(failNow and not failNow[1], &quot;اخرج&quot;, &quot;لم يستقر — اخرج فقط&quot;)
+alertcondition(lockNow and not lockNow[1], &quot;جني&quot;, &quot;اقفل نصف وحرّك الوقف&quot;)
 alertcondition(isHighImpact and not isHighImpact[1], &quot;خبر&quot;, &quot;نافذة أخبار&quot;)
 </textarea>
 <script>
