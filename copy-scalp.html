@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.1</title>
+<title>نسخ Scalp v1.2</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.1 — 3م / 5م / 15م</h1>
+<h1>Scalp v1.2</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.1&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.2&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -562,13 +562,18 @@ sweepLoC = low[1] &lt; boxLo[1] and close[1] &gt; boxLo[1] and close[1] &gt; ope
 sweepHiC = high[1] &gt; boxHi[1] and close[1] &lt; boxHi[1] and close[1] &lt; open[1]
 reclaimLo = sweepLoC and close &gt;= close[1] and close &gt; boxLo
 reclaimHi = sweepHiC and close &lt;= close[1] and close &lt; boxHi
-brkUp = close &gt; boxHi and close[1] &lt;= boxHi and (strongVol or bullImpulse or ema5Up) and not stretchedUp
-brkDn = close &lt; boxLo and close[1] &gt;= boxLo and (strongVol or bearImpulse or ema5Dn) and not stretchedDn
+closedOk = barstate.isconfirmed
+brkUpLive = close &gt; boxHi and close[1] &lt;= boxHi and (strongVol or bullImpulse or ema5Up) and not stretchedUp
+brkDnLive = close &lt; boxLo and close[1] &gt;= boxLo and (strongVol or bearImpulse or ema5Dn) and not stretchedDn
+brkUp = brkUpLive and closedOk
+brkDn = brkDnLive and closedOk
 atrExpand = atr &gt; atr[4] * 1.12
 flagUp = runUp and inBox and not dispUp
 flagDn = runDn and inBox and not dispDn
-pullBuy = (runUp or flagUp) and (hammer1 or holdEmaL or holdVwapL or (nearLo and close &gt; open)) and close &gt; boxLo
-pullSell = (runDn or flagDn) and (star1 or holdEmaS or holdVwapS or (nearHi and close &lt; open)) and close &lt; boxHi
+pullBuyLive = (runUp or flagUp) and (hammer1 or holdEmaL or holdVwapL or (nearLo and close &gt; open)) and close &gt; boxLo
+pullSellLive = (runDn or flagDn) and (star1 or holdEmaS or holdVwapS or (nearHi and close &lt; open)) and close &lt; boxHi
+pullBuy = pullBuyLive and closedOk
+pullSell = pullSellLive and closedOk
 
 st = &quot;تجميع&quot;
 stCol = color.gray
@@ -667,6 +672,34 @@ if rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 else
     waitBars += 1
 
+var int sigBar = na
+var string sigKind = &quot;&quot;
+var float sigLvl = na
+var int failUntil = 0
+trigBuy = rec == &quot;شراء&quot; and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1))
+trigSell = rec == &quot;بيع&quot; and (pullSell or reclaimHi or brkDn or (sweepHiC and star1))
+if trigBuy and closedOk
+    sigBar := bar_index
+    sigKind := brkUp ? &quot;brkL&quot; : (reclaimLo or sweepLoC) ? &quot;swpL&quot; : &quot;pullL&quot;
+    sigLvl := brkUp ? boxHi : math.min(boxLo, emaFast)
+if trigSell and closedOk
+    sigBar := bar_index
+    sigKind := brkDn ? &quot;brkS&quot; : (reclaimHi or sweepHiC) ? &quot;swpS&quot; : &quot;pullS&quot;
+    sigLvl := brkDn ? boxLo : math.max(boxHi, emaFast)
+failBuy = not na(sigBar) and (sigKind == &quot;brkL&quot; or sigKind == &quot;pullL&quot; or sigKind == &quot;swpL&quot;) and bar_index &gt; sigBar and bar_index &lt;= sigBar + 3 and closedOk and close &lt; sigLvl
+failSell = not na(sigBar) and (sigKind == &quot;brkS&quot; or sigKind == &quot;pullS&quot; or sigKind == &quot;swpS&quot;) and bar_index &gt; sigBar and bar_index &lt;= sigBar + 3 and closedOk and close &gt; sigLvl
+failNow = failBuy or failSell
+if failNow
+    rec := &quot;انتظار&quot;
+    blockedFlip := true
+    failUntil := bar_index + 2
+    sigBar := na
+    sigKind := &quot;&quot;
+if bar_index &lt; failUntil
+    blockedFlip := true
+    if rec != lastSide
+        rec := &quot;انتظار&quot;
+
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 pullPx = rec == &quot;شراء&quot; ? math.max(emaFast, boxLo) : rec == &quot;بيع&quot; ? math.min(emaFast, boxHi) : na
 slP = rec == &quot;شراء&quot; ? math.min(boxLo, low[1]) - atrN * 0.10 : rec == &quot;بيع&quot; ? math.max(boxHi, high[1]) + atrN * 0.10 : na
@@ -674,15 +707,25 @@ tpP = rec == &quot;شراء&quot; ? (nearLo or st == &quot;كنس قاع&quot; ?
 lvTxt = hasTrade and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = hasTrade ? rec == &quot;شراء&quot; ? color.lime : color.red : color.gray
 
-enterNowBuy = rec == &quot;شراء&quot; and not mxLive and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1))
-enterNowSell = rec == &quot;بيع&quot; and not mxLive and (pullSell or reclaimHi or brkDn or (sweepHiC and star1))
+enterNowBuy = rec == &quot;شراء&quot; and not mxLive and not failNow and (pullBuy or reclaimLo or brkUp or (sweepLoC and hammer1))
+enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and (pullSell or reclaimHi or brkDn or (sweepHiC and star1))
 hiStr = str.tostring(boxHi, &quot;#.##&quot;)
 loStr = str.tostring(boxLo, &quot;#.##&quot;)
 emaStr = str.tostring(emaFast, &quot;#.##&quot;)
+unstLong = mxLiveLong and (close &lt; boxLo or (close &lt; boxHi and high[1] &gt;= boxHi) or (close &lt; emaFast and close &lt; boxMid and ema5Dn))
+unstShort = mxLiveShort and (close &gt; boxHi or (close &gt; boxLo and low[1] &lt;= boxLo) or (close &gt; emaFast and close &gt; boxMid and ema5Up))
 
 enterTxt = &quot;لا تدخل&quot;
 enterCol = color.gray
-if mxLive
+if failNow
+    enterTxt := &quot;اخرج إن دخلت | لم يستقر — لا تعكس&quot;
+    enterCol := color.orange
+    st := &quot;فشل — لم يستقر&quot;
+    stCol := color.orange
+else if mxLive and (unstLong or unstShort)
+    enterTxt := &quot;اخرج | لم يستقر — لا تعكس&quot;
+    enterCol := color.orange
+else if mxLive
     if (mxLiveLong and rec == &quot;بيع&quot;) or (mxLiveShort and rec == &quot;شراء&quot;) or (blockedFlip and rec == &quot;انتظار&quot;)
         enterTxt := &quot;اخرج فقط — لا تعكس&quot;
         enterCol := color.orange
@@ -692,6 +735,18 @@ if mxLive
 else if isHighImpact
     enterTxt := &quot;لا تدخل — نافذة خبر&quot;
     enterCol := color.red
+else if brkUpLive and not closedOk
+    enterTxt := &quot;كسر يتشكل — ادخل بعد إغلاق فوق &quot; + hiStr
+    enterCol := color.yellow
+else if brkDnLive and not closedOk
+    enterTxt := &quot;كسر يتشكل — ادخل بعد إغلاق تحت &quot; + loStr
+    enterCol := color.yellow
+else if pullBuyLive and not closedOk
+    enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق فوق &quot; + emaStr
+    enterCol := color.yellow
+else if pullSellLive and not closedOk
+    enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق تحت &quot; + emaStr
+    enterCol := color.yellow
 else if enterNowBuy
     enterTxt := brkUp ? &quot;ادخل شراء الآن | كسر &quot; + hiStr : st == &quot;كنس قاع&quot; ? &quot;ادخل شراء الآن | كنس القاع&quot; : &quot;ادخل شراء الآن | رجوع العلم&quot;
     enterCol := color.lime
@@ -738,7 +793,7 @@ else
     enterTxt := &quot;لا تدخل&quot;
 recShow = rec + &quot; → &quot; + enterTxt
 
-advice = dispUp ? &quot;اندفاع تم — لا تطارد القمة، رجوع أو كسر&quot; : dispDn ? &quot;اندفاع هبوط — لا تطارد القاع&quot; : flagUp ? &quot;علم بعد الصعود — الدخول من الرجوع أو كسر السقف&quot; : flagDn ? &quot;علم بعد الهبوط — الدخول من الرجوع أو كسر القاع&quot; : st == &quot;كنس قاع&quot; ? &quot;السيولة تحت أُخذت — الهدف سقف النطاق&quot; : st == &quot;كنس قمة&quot; ? &quot;السيولة فوق أُخذت — الهدف قاع النطاق&quot; : st == &quot;كسر صعود&quot; ? &quot;كسر مع حجم — لا تعاكس&quot; : st == &quot;كسر هبوط&quot; ? &quot;كسر مع حجم — لا تعاكس&quot; : inRange ? &quot;لا وسط الصندوق على رافعة عالية&quot; : rec == &quot;شراء&quot; ? &quot;الاتجاه شراء — انتظر الحافة&quot; : rec == &quot;بيع&quot; ? &quot;الاتجاه بيع — انتظر الحافة&quot; : &quot;لا إشارة دخول الآن&quot;
+advice = failNow or unstLong or unstShort ? &quot;الكسر/الرجوع لم يستقر — اخرج فقط ولا تعكس&quot; : dispUp ? &quot;اندفاع تم — لا تطارد القمة، رجوع أو كسر&quot; : dispDn ? &quot;اندفاع هبوط — لا تطارد القاع&quot; : flagUp ? &quot;علم بعد الصعود — الدخول من الرجوع أو كسر السقف&quot; : flagDn ? &quot;علم بعد الهبوط — الدخول من الرجوع أو كسر القاع&quot; : st == &quot;كنس قاع&quot; ? &quot;السيولة تحت أُخذت — الهدف سقف النطاق&quot; : st == &quot;كنس قمة&quot; ? &quot;السيولة فوق أُخذت — الهدف قاع النطاق&quot; : st == &quot;كسر صعود&quot; ? &quot;كسر مع حجم — لا تعاكس&quot; : st == &quot;كسر هبوط&quot; ? &quot;كسر مع حجم — لا تعاكس&quot; : inRange ? &quot;لا وسط الصندوق على رافعة عالية&quot; : rec == &quot;شراء&quot; ? &quot;الاتجاه شراء — انتظر الحافة&quot; : rec == &quot;بيع&quot; ? &quot;الاتجاه بيع — انتظر الحافة&quot; : &quot;لا إشارة دخول الآن&quot;
 adviceCol = enterCol
 
 dxyN = request.security(&quot;TVC:DXY&quot;, &quot;1&quot;, close, barmerge.gaps_off, barmerge.lookahead_off)
@@ -952,7 +1007,7 @@ bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.n
 var table t = table.new(position.top_right, 2, 16, border_width=1)
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.1&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.2&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
