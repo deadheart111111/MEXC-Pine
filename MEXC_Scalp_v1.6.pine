@@ -731,7 +731,7 @@ if bar_index < failUntil
 hasTrade = rec == "شراء" or rec == "بيع"
 pullPx = rec == "شراء" ? math.max(emaFast, boxLo) : rec == "بيع" ? math.min(emaFast, boxHi) : na
 slP = rec == "شراء" ? math.min(not na(liqLo) and (reclaimLiqLo or sweepLiqLoC) ? liqLo : boxLo, low[1]) - atrN * 0.10 : rec == "بيع" ? math.max(not na(liqHi) and (reclaimLiqHi or sweepLiqHiC) ? liqHi : boxHi, high[1]) + atrN * 0.10 : na
-tpP = rec == "شراء" ? (reclaimLiqLo or sweepLiqLoC ? nz(liqHi, boxHi) : nearLo or st == "كنس قاع" or str.startswith(st, "كنس قاع") ? boxHi : close + atrN * 1.05) : rec == "بيع" ? (reclaimLiqHi or sweepLiqHiC ? nz(liqLo, boxLo) : nearHi or st == "كنس قمة" or str.startswith(st, "كنس قمة") ? boxLo : close - atrN * 1.05) : na
+tpP = rec == "شراء" ? (nearLo or reclaimLiqLo or sweepLiqLoC or str.startswith(st, "كنس قاع") ? boxHi : close + atrN * 1.05) : rec == "بيع" ? (nearHi or reclaimLiqHi or sweepLiqHiC or str.startswith(st, "كنس قمة") ? boxLo : close - atrN * 1.05) : na
 lvTxt = hasTrade and not na(slP) ? "وقف " + str.tostring(slP, "#.##") + " | هدف " + str.tostring(tpP, "#.##") : "—"
 lvCol = hasTrade ? rec == "شراء" ? color.lime : color.red : color.gray
 
