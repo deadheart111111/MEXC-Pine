@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.3</title>
+<title>نسخ Scalp v1.4</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.3</h1>
+<h1>Scalp v1.4</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.3&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.4&quot;, overlay=true, max_lines_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -576,8 +576,10 @@ brkDn = brkDnLive and closedOk
 atrExpand = atr &gt; atr[4] * 1.12
 flagUp = runUp and inBox and not dispUp
 flagDn = runDn and inBox and not dispDn
-pullBuyLive = (runUp or flagUp) and (hammer1 or holdEmaL or holdVwapL or (nearLo and close &gt; open)) and close &gt; boxLo
-pullSellLive = (runDn or flagDn) and (star1 or holdEmaS or holdVwapS or (nearHi and close &lt; open)) and close &lt; boxHi
+inLowHalf = close &lt;= boxMid
+inHighHalf = close &gt;= boxMid
+pullBuyLive = (runUp or flagUp) and inLowHalf and (hammer1 or holdEmaL or holdVwapL or (nearLo and close &gt; open)) and close &gt; boxLo
+pullSellLive = (runDn or flagDn) and inHighHalf and (star1 or holdEmaS or holdVwapS or (nearHi and close &lt; open)) and close &lt; boxHi
 pullBuy = pullBuyLive and closedOk
 pullSell = pullSellLive and closedOk
 
@@ -993,19 +995,16 @@ if hasTrade and not na(slP)
     if slHitsLiq
         lvCol := color.orange
 lockNow = mxOpen and mxPnl &gt; 0 and math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.45, mxEntry * 0.0035)
-newsBlockEnter = nearestLeft &lt;= 30 and nearestLeft &gt; 0 and nearestTs &lt; FAR
+newsBlockEnter = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
 thinSess = sessName == &quot;سيولة ضعيفة&quot;
 if not (failNow or unstLong or unstShort)
     if mxOpen and lockNow
         enterTxt := &quot;اقفل نصف | حرّك الوقف فوق الدخول&quot;
         enterCol := color.yellow
-    else if enterNowBuy and newsBlockEnter
+    else if newsBlockEnter and not mxOpen
         enterTxt := &quot;لا تدخل — خبر خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
         enterCol := color.red
         enterNowBuy := false
-    else if enterNowSell and newsBlockEnter
-        enterTxt := &quot;لا تدخل — خبر خلال &quot; + str.tostring(nearestLeft) + &quot; د&quot;
-        enterCol := color.red
         enterNowSell := false
     else if enterNowBuy and thinSess
         enterTxt := &quot;لا تدخل — سيولة ضعيفة&quot;
@@ -1055,7 +1054,7 @@ bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.n
 var table t = table.new(position.top_right, 2, 16, border_width=1)
 if showTable and barstate.islast
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.3&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.4&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=color.new(enterCol, 20), text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=color.new(enterCol, 20), text_color=color.white, text_size=sz)
