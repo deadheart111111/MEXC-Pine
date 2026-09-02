@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.10</title>
+<title>نسخ Scalp v1.11</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.10</h1>
+<h1>Scalp v1.11</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.10&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.11&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -651,58 +651,58 @@ sweepBuyNow = closedOk and ((sweepLo and close &gt; open) or (sweepLiqLo and clo
 sweepSellNow = closedOk and ((sweepHi and close &lt; open) or (sweepLiqHi and close &lt; open))
 failWin = tfSec &lt;= 300 ? 1 : 2
 
-st = &quot;تجميع&quot;
+st = &quot;يتذبذب بدون اتجاه&quot;
 stCol = color.gray
 if dispUp
-    st := &quot;اندفاع صعود&quot;
+    st := &quot;صعود سريع — لا تطارد&quot;
     stCol := color.lime
 else if dispDn
-    st := &quot;اندفاع هبوط&quot;
+    st := &quot;هبوط سريع — لا تطارد&quot;
     stCol := color.red
 else if sweepLiqLo or sweepLiqLoC
-    st := &quot;كنس قاع &quot; + liqNm
+    st := &quot;صيد ستوبات تحت قاع &quot; + liqNm
     stCol := color.lime
 else if sweepLiqHi or sweepLiqHiC
-    st := &quot;كنس قمة &quot; + liqNm
+    st := &quot;صيد ستوبات فوق قمة &quot; + liqNm
     stCol := color.red
 else if sweepLo or sweepLoC
-    st := &quot;كنس قاع&quot;
+    st := &quot;صيد ستوبات تحت الصندوق&quot;
     stCol := color.lime
 else if sweepHi or sweepHiC
-    st := &quot;كنس قمة&quot;
+    st := &quot;صيد ستوبات فوق الصندوق&quot;
     stCol := color.red
 else if brkUp
-    st := &quot;كسر صعود&quot;
+    st := &quot;كسر سقف الصندوق&quot;
     stCol := color.lime
 else if brkDn
-    st := &quot;كسر هبوط&quot;
+    st := &quot;كسر قاع الصندوق&quot;
     stCol := color.red
 else if edgeBuy or edgeBuyLive
-    st := &quot;ارتداد من القاع&quot;
+    st := &quot;يرتد من قاع الصندوق&quot;
     stCol := color.lime
 else if edgeSell or edgeSellLive
-    st := &quot;ارتداد من القمة&quot;
+    st := &quot;يرتد من سقف الصندوق&quot;
     stCol := color.red
 else if flagUp
-    st := &quot;علم صعود&quot;
+    st := &quot;صعد ثم توقف يتذبذب&quot;
     stCol := color.lime
 else if flagDn
-    st := &quot;علم هبوط&quot;
+    st := &quot;نزل ثم توقف يتذبذب&quot;
     stCol := color.red
 else if tight
-    st := &quot;نطاق ضيق&quot;
+    st := &quot;صندوق ضيق يتكرر&quot;
     stCol := color.orange
 else if inRange
-    st := &quot;نطاق يتكرر&quot;
+    st := &quot;يتذبذب داخل الصندوق&quot;
     stCol := color.orange
 else if atrExpand
-    st := &quot;توسّع&quot;
+    st := &quot;الحركة تتوسع&quot;
     stCol := color.yellow
 else if runUp
-    st := &quot;زخم صعود&quot;
+    st := &quot;يميل للصعود&quot;
     stCol := color.lime
 else if runDn
-    st := &quot;زخم هبوط&quot;
+    st := &quot;يميل للهبوط&quot;
     stCol := color.red
 
 rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot;
@@ -791,7 +791,7 @@ if bar_index &lt; failUntil
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 pullPx = rec == &quot;شراء&quot; ? math.max(emaFast, boxLo) : rec == &quot;بيع&quot; ? math.min(emaFast, boxHi) : na
 slP = rec == &quot;شراء&quot; ? math.min(not na(liqLo) and (reclaimLiqLo or sweepLiqLoC or sweepLiqLo) ? liqLo : boxLo, low) - atrN * 0.10 : rec == &quot;بيع&quot; ? math.max(not na(liqHi) and (reclaimLiqHi or sweepLiqHiC or sweepLiqHi) ? liqHi : boxHi, high) + atrN * 0.10 : na
-tpP = rec == &quot;شراء&quot; ? (nearLo or reclaimLiqLo or sweepLiqLoC or sweepBuyNow or str.startswith(st, &quot;كنس قاع&quot;) ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (nearHi or reclaimLiqHi or sweepLiqHiC or sweepSellNow or str.startswith(st, &quot;كنس قمة&quot;) ? boxLo : close - atrN * 1.05) : na
+tpP = rec == &quot;شراء&quot; ? (nearLo or reclaimLiqLo or sweepLiqLoC or sweepBuyNow ? boxHi : close + atrN * 1.05) : rec == &quot;بيع&quot; ? (nearHi or reclaimLiqHi or sweepLiqHiC or sweepSellNow ? boxLo : close - atrN * 1.05) : na
 lvTxt = hasTrade and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = hasTrade ? rec == &quot;شراء&quot; ? color.lime : color.red : color.gray
 slDistPct = hasTrade and not na(slP) and close &gt; 0 ? math.abs(close - slP) / close : 0.0
@@ -890,7 +890,7 @@ else
     enterTxt := &quot;لا تدخل&quot;
 recShow = enterTxt
 
-whereTxt = inHighHalf ? &quot;أعلى النطاق&quot; : inLowHalf ? &quot;أسفل النطاق&quot; : &quot;وسط النطاق&quot;
+whereTxt = inHighHalf ? &quot;السعر عند سقف الصندوق &quot; + str.tostring(boxHi, &quot;#.##&quot;) : inLowHalf ? &quot;السعر عند قاع الصندوق &quot; + str.tostring(boxLo, &quot;#.##&quot;) : &quot;السعر في وسط الصندوق&quot;
 stShow = st + &quot; | &quot; + whereTxt
 
 dxyN = request.security(&quot;TVC:DXY&quot;, &quot;1&quot;, close, barmerge.gaps_off, barmerge.lookahead_off)
@@ -1201,7 +1201,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.10&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.11&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
