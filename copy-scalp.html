@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.8</title>
+<title>نسخ Scalp v1.9</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.8</h1>
+<h1>Scalp v1.9 — عداد الجلسة</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.8&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.9&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -133,46 +133,70 @@ tsNyEnd  = f_nextTsTZ(tzNY, 16, 0)
 tsAsiaEnd = f_nextTsTZ(tzTok, 18, 0)
 nearLon = not inLonNow and math.floor((tsLonOpen - timenow) / 60000) &lt;= 15
 nearNy  = not inNyNow and math.floor((tsNyOpen - timenow) / 60000) &lt;= 15
-sessName = &quot;سيولة ضعيفة&quot;
+sessName = &quot;خارج الجلسات&quot;
 sessDir = &quot;—&quot;
 sessLeftTs = tsAsiaOpen
 sessCol = color.gray
+sessLive = false
+nextSess = &quot;آسيا&quot;
+nextSessTs = tsAsiaOpen
 if inOvNow
-    sessName := &quot;تداخل لندن-نيويورك&quot;
+    sessName := &quot;لندن ونيويورك معاً&quot;
     sessDir := f_sessDir(pxNy)
     sessLeftTs := tsLonEnd
     sessCol := f_sessCol(sessDir)
+    sessLive := true
+    nextSess := &quot;آسيا&quot;
+    nextSessTs := tsAsiaOpen
 else if nearNy
-    sessName := &quot;اقتراب نيويورك&quot;
+    sessName := &quot;نيويورك قرب الافتتاح&quot;
     sessDir := &quot;—&quot;
     sessLeftTs := tsNyOpen
     sessCol := color.orange
+    nextSess := &quot;نيويورك&quot;
+    nextSessTs := tsNyOpen
 else if inNyNow
-    sessName := &quot;نيويورك&quot;
+    sessName := &quot;جلسة نيويورك&quot;
     sessDir := f_sessDir(pxNy)
     sessLeftTs := tsNyEnd
     sessCol := f_sessCol(sessDir)
+    sessLive := true
+    nextSess := &quot;آسيا&quot;
+    nextSessTs := tsAsiaOpen
 else if nearLon
-    sessName := &quot;اقتراب لندن&quot;
+    sessName := &quot;لندن قرب الافتتاح&quot;
     sessDir := &quot;—&quot;
     sessLeftTs := tsLonOpen
     sessCol := color.orange
+    nextSess := &quot;لندن&quot;
+    nextSessTs := tsLonOpen
 else if inLonNow
-    sessName := &quot;لندن&quot;
+    sessName := &quot;جلسة لندن&quot;
     sessDir := f_sessDir(pxLon)
     sessLeftTs := tsLonEnd
     sessCol := f_sessCol(sessDir)
+    sessLive := true
+    nextSess := &quot;نيويورك&quot;
+    nextSessTs := tsNyOpen
 else if inAsiaNow
-    sessName := &quot;آسيا&quot;
+    sessName := &quot;جلسة آسيا&quot;
     sessDir := f_sessDir(pxAsia)
     sessLeftTs := tsAsiaEnd
     sessCol := f_sessCol(sessDir)
+    sessLive := true
+    nextSess := &quot;لندن&quot;
+    nextSessTs := tsLonOpen
 else
-    sessName := &quot;سيولة ضعيفة&quot;
+    sessName := &quot;خارج الجلسات&quot;
     sessDir := &quot;—&quot;
-    sessLeftTs := tsAsiaOpen
+    sessLeftTs := tsLonOpen &lt; tsAsiaOpen ? tsLonOpen : tsAsiaOpen
     sessCol := color.gray
-sessTxt = sessName + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; | &quot; + sessDir) + (na(liqHi) or na(liqLo) ? &quot;&quot; : &quot; | سيولة &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;) + &quot;–&quot; + str.tostring(liqHi, &quot;#.##&quot;)) + &quot; · &quot; + f_leftStr(sessLeftTs)
+    nextSess := tsLonOpen &lt;= tsAsiaOpen ? &quot;لندن&quot; : &quot;آسيا&quot;
+    nextSessTs := tsLonOpen &lt;= tsAsiaOpen ? tsLonOpen : tsAsiaOpen
+dirShow = sessDir == &quot;صعود&quot; ? &quot;فوق الافتتاح&quot; : sessDir == &quot;هبوط&quot; ? &quot;تحت الافتتاح&quot; : &quot;محايد&quot;
+leftVerb = sessLive ? &quot;تنتهي&quot; : &quot;تبدأ&quot;
+sameNext = nextSessTs == sessLeftTs
+sessTxt = sessName + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; · &quot; + dirShow) + &quot; | &quot; + leftVerb + &quot; &quot; + f_leftStr(sessLeftTs) + (sameNext ? &quot;&quot; : &quot; | ثم &quot; + nextSess + &quot; تبدأ &quot; + f_leftStr(nextSessTs))
 
 f_amsClock(ts) =&gt;
     sameDay = year(ts, tzAMS) == year(timenow, tzAMS) and month(ts, tzAMS) == month(timenow, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(timenow, tzAMS)
@@ -1056,7 +1080,7 @@ hardNews = nearestName == &quot;NFP&quot; or nearestName == &quot;FOMC&quot; or 
 newsSoon = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
 qualityBuy = tfAgreeBuy and not weakVol and (brkUp or pullBuy or reclaimLo or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
 qualitySell = tfAgreeSell and not weakVol and (brkDn or pullSell or reclaimHi or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
-thinSess = sessName == &quot;سيولة ضعيفة&quot;
+thinSess = sessName == &quot;خارج الجلسات&quot;
 if not (failNow or unstLong or unstShort)
     if mxOpen and lockNow
         enterTxt := &quot;اقفل نصف | حرّك الوقف فوق الدخول&quot;
@@ -1169,7 +1193,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.8&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.9&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
