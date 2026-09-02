@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v1.12</title>
+<title>نسخ Scalp v1.13</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v1.12</h1>
+<h1>Scalp v1.13</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v1.12&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v1.13&quot;, overlay=true, max_lines_count=24, max_labels_count=12, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -1184,8 +1184,9 @@ if showBox and barstate.islast
         lnLiqL := line.new(bar_index - 40, liqLo, bar_index + 6, liqLo, color=color.new(#9C27B0, 0), width=1, style=line.style_dotted)
         lbLiqL := label.new(bar_index + 6, liqLo, &quot;قاع &quot; + liqNm, color=color.new(#9C27B0, 0), textcolor=color.white, style=label.style_label_left, size=size.tiny)
 
-drawTrade = showTrade and (mxOpen or enterNowBuy or enterNowSell)
-enPx = mxOpen ? mxEntry : close
+drawTrade = showTrade and hasTrade and not na(slP) and not na(tpP)
+enPx = mxOpen ? mxEntry : enterNowBuy or enterNowSell ? close : rec == &quot;شراء&quot; ? waitBuyPx : waitSellPx
+enName = mxOpen ? &quot;دخول صفقتك&quot; : enterNowBuy or enterNowSell ? &quot;دخول الآن&quot; : &quot;رجوع / دخول&quot;
 if barstate.islast
     if not na(lnEn)
         line.delete(lnEn)
@@ -1199,13 +1200,13 @@ if barstate.islast
         label.delete(lbSl)
     if not na(lbTp)
         label.delete(lbTp)
-    if drawTrade and not na(slP) and not na(tpP)
+    if drawTrade
         lnEn := line.new(bar_index - 2, enPx, bar_index + 8, enPx, color=color.aqua, width=2)
         lnSl := line.new(bar_index - 2, slP, bar_index + 8, slP, color=color.red, width=2)
         lnTp := line.new(bar_index - 2, tpP, bar_index + 8, tpP, color=color.lime, width=2)
-        lbEn := label.new(bar_index + 8, enPx, mxOpen ? &quot;دخول صفقتك&quot; : &quot;دخول&quot;, color=color.aqua, textcolor=color.black, style=label.style_label_left, size=size.small)
-        lbSl := label.new(bar_index + 8, slP, &quot;وقف&quot;, color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
-        lbTp := label.new(bar_index + 8, tpP, &quot;هدف&quot;, color=color.lime, textcolor=color.black, style=label.style_label_left, size=size.small)
+        lbEn := label.new(bar_index + 8, enPx, enName + &quot; &quot; + str.tostring(enPx, &quot;#.##&quot;), color=color.aqua, textcolor=color.black, style=label.style_label_left, size=size.small)
+        lbSl := label.new(bar_index + 8, slP, &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;), color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+        lbTp := label.new(bar_index + 8, tpP, &quot;هدف &quot; + str.tostring(tpP, &quot;#.##&quot;), color=color.lime, textcolor=color.black, style=label.style_label_left, size=size.small)
 
 bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
 
@@ -1214,7 +1215,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v1.12&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;MEXC Scalp v1.13&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
