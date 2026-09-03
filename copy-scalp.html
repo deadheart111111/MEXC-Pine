@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.1</title>
+<title>نسخ Scalp v2.2</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.1</h1>
+<h1>Scalp v2.2</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.1&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.2&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -141,7 +141,7 @@ sessLive = false
 nextSess = &quot;آسيا&quot;
 nextSessTs = tsAsiaOpen
 if inOvNow
-    sessName := &quot;لندن ونيويورك معاً&quot;
+    sessName := &quot;لندن+نيويورك&quot;
     sessDir := f_sessDir(pxNy)
     sessLeftTs := tsLonEnd
     sessCol := f_sessCol(sessDir)
@@ -149,14 +149,14 @@ if inOvNow
     nextSess := &quot;آسيا&quot;
     nextSessTs := tsAsiaOpen
 else if nearNy
-    sessName := &quot;نيويورك قرب الافتتاح&quot;
+    sessName := &quot;نيويورك قرب&quot;
     sessDir := &quot;—&quot;
     sessLeftTs := tsNyOpen
     sessCol := color.orange
     nextSess := &quot;نيويورك&quot;
     nextSessTs := tsNyOpen
 else if inNyNow
-    sessName := &quot;جلسة نيويورك&quot;
+    sessName := &quot;نيويورك&quot;
     sessDir := f_sessDir(pxNy)
     sessLeftTs := tsNyEnd
     sessCol := f_sessCol(sessDir)
@@ -164,14 +164,14 @@ else if inNyNow
     nextSess := &quot;آسيا&quot;
     nextSessTs := tsAsiaOpen
 else if nearLon
-    sessName := &quot;لندن قرب الافتتاح&quot;
+    sessName := &quot;لندن قرب&quot;
     sessDir := &quot;—&quot;
     sessLeftTs := tsLonOpen
     sessCol := color.orange
     nextSess := &quot;لندن&quot;
     nextSessTs := tsLonOpen
 else if inLonNow
-    sessName := &quot;جلسة لندن&quot;
+    sessName := &quot;لندن&quot;
     sessDir := f_sessDir(pxLon)
     sessLeftTs := tsLonEnd
     sessCol := f_sessCol(sessDir)
@@ -179,7 +179,7 @@ else if inLonNow
     nextSess := &quot;نيويورك&quot;
     nextSessTs := tsNyOpen
 else if inAsiaNow
-    sessName := &quot;جلسة آسيا&quot;
+    sessName := &quot;آسيا&quot;
     sessDir := f_sessDir(pxAsia)
     sessLeftTs := tsAsiaEnd
     sessCol := f_sessCol(sessDir)
@@ -193,14 +193,14 @@ else
     sessCol := color.gray
     nextSess := tsLonOpen &lt;= tsAsiaOpen ? &quot;لندن&quot; : &quot;آسيا&quot;
     nextSessTs := tsLonOpen &lt;= tsAsiaOpen ? tsLonOpen : tsAsiaOpen
-dirShow = sessDir == &quot;صعود&quot; ? &quot;فوق الافتتاح&quot; : sessDir == &quot;هبوط&quot; ? &quot;تحت الافتتاح&quot; : &quot;محايد&quot;
+dirShow = sessDir == &quot;صعود&quot; ? &quot;فوق&quot; : sessDir == &quot;هبوط&quot; ? &quot;تحت&quot; : &quot;محايد&quot;
 sessClock = f_leftStr(sessLeftTs)
 magTxt = &quot;&quot;
 if not na(liqHi) and liqHi &gt; close and (liqHi - close) &lt;= close * 0.012
-    magTxt := &quot; | أقرب هدف قمة &quot; + liqNm + &quot; &quot; + str.tostring(liqHi, &quot;#.##&quot;)
+    magTxt := &quot; ·قمة &quot; + liqNm + &quot; &quot; + str.tostring(liqHi, &quot;#.##&quot;)
 else if not na(liqLo) and close &gt; liqLo and (close - liqLo) &lt;= close * 0.012
-    magTxt := &quot; | أقرب هدف قاع &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;)
-sessTxt = sessLive ? sessName + &quot; · تنتهي &quot; + sessClock + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; | &quot; + dirShow) + magTxt : sessName + &quot; · تبدأ &quot; + sessClock
+    magTxt := &quot; ·قاع &quot; + liqNm + &quot; &quot; + str.tostring(liqLo, &quot;#.##&quot;)
+sessTxt = sessLive ? sessName + &quot; &quot; + sessClock + (sessDir == &quot;—&quot; ? &quot;&quot; : &quot; &quot; + dirShow) + magTxt : sessName + &quot; بعد &quot; + sessClock
 
 f_amsClock(ts) =&gt;
     sameDay = year(ts, tzAMS) == year(timenow, tzAMS) and month(ts, tzAMS) == month(timenow, tzAMS) and dayofmonth(ts, tzAMS) == dayofmonth(timenow, tzAMS)
@@ -739,7 +739,7 @@ whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;�
 whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
 rvolText = bullImpulse and strongVol ? &quot;دفعة + حجم | صعود&quot; : bearImpulse and strongVol ? &quot;دفعة + حجم | هبوط&quot; : strongVol ? (close &gt; open ? &quot;قوي صعود&quot; : &quot;قوي هبوط&quot;) : weakVol ? &quot;ضعيف&quot; : &quot;عادي&quot;
 rvolCol = weakVol ? color.orange : flowLong ? color.lime : flowShort ? color.red : color.gray
-dirTxt = (tfAgreeBuy ? &quot;متفق صعود&quot; : tfAgreeSell ? &quot;متفق هبوط&quot; : &quot;مختلف&quot;) + &quot; | &quot; + htfName + &quot; &quot; + (htfUp ? &quot;صعود&quot; : &quot;هبوط&quot;) + (htfTF == &quot;15&quot; or tfSec &gt;= 900 ? &quot;&quot; : &quot; | 15د &quot; + (tf15Up ? &quot;صعود&quot; : &quot;هبوط&quot;)) + &quot; | BTC &quot; + (btcUp ? &quot;صعود&quot; : &quot;هبوط&quot;)
+dirTxt = (tfAgreeBuy ? &quot;صعود&quot; : tfAgreeSell ? &quot;هبوط&quot; : &quot;مختلف&quot;) + &quot; &quot; + htfName + (htfTF == &quot;15&quot; or tfSec &gt;= 900 ? &quot;&quot; : &quot; ·15د &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;)) + &quot; ·BTC &quot; + (btcUp ? &quot;ص&quot; : &quot;ه&quot;)
 dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
@@ -940,7 +940,7 @@ else
     enterTxt := &quot;لا تدخل&quot;
 recShow = enterTxt
 
-whereTxt = inHighHalf ? &quot;السعر عند سقف الصندوق &quot; + str.tostring(boxHi, &quot;#.##&quot;) : inLowHalf ? &quot;السعر عند قاع الصندوق &quot; + str.tostring(boxLo, &quot;#.##&quot;) : &quot;السعر في وسط الصندوق&quot;
+whereTxt = inHighHalf ? &quot;عند السقف&quot; : inLowHalf ? &quot;عند القاع&quot; : &quot;في الوسط&quot;
 stShow = st + &quot; | &quot; + whereTxt
 
 dxyN = request.security(&quot;TVC:DXY&quot;, &quot;1&quot;, close, barmerge.gaps_off, barmerge.lookahead_off)
@@ -1126,7 +1126,7 @@ mxPnlLiqTxt = not mxOpen ? &quot;—&quot; : mxQtyBad ? &quot;الكمية Cont 
 newsNearTxt = nearestCD + &quot; | &quot; + newsStatus
 newsDirRngTxt = newsDirTxt + &quot;  &quot; + pxTxt
 newsMixTxt = newsPricedTxt + &quot; | &quot; + statTxt
-sz = size.small
+sz = size.tiny
 
 slHitsLiq = mxOpen and not na(slP) and not na(mxLiq) and (mxLong ? slP &lt;= mxLiq : slP &gt;= mxLiq)
 if hasTrade and not na(slP)
@@ -1255,12 +1255,12 @@ if barstate.islast
 
 bgcolor(isHighImpactBar ? color.new(color.orange, 90) : approachingBar ? color.new(color.yellow, 93) : na)
 
-var table t = table.new(position.top_right, 2, 16, bgcolor=color.new(#111111, 0), border_width=1, border_color=color.new(#444444, 0), frame_color=color.new(#444444, 0))
+var table t = table.new(position.top_left, 2, 16, bgcolor=color.new(#111111, 0), border_width=1, border_color=color.new(#444444, 0), frame_color=color.new(#444444, 0))
 if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;MEXC Scalp v2.1&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.2&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
