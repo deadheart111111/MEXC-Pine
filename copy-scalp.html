@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.2</title>
+<title>نسخ Scalp v2.3</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.2</h1>
+<h1>Scalp v2.3</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.2&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.3&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -817,9 +817,24 @@ if bar_index &lt; failUntil
 hasTrade = rec == &quot;شراء&quot; or rec == &quot;بيع&quot;
 swingLo = ta.lowest(low, 3)
 swingHi = ta.highest(high, 3)
-slP = rec == &quot;شراء&quot; ? math.min(boxLo, swingLo) - atrN * 0.08 : rec == &quot;بيع&quot; ? math.max(boxHi, swingHi) + atrN * 0.08 : na
-tp1 = rec == &quot;شراء&quot; ? boxMid : rec == &quot;بيع&quot; ? boxMid : na
-tp2 = rec == &quot;شراء&quot; ? boxHi : rec == &quot;بيع&quot; ? boxLo : na
+slLive = rec == &quot;شراء&quot; ? math.min(boxLo, swingLo) - atrN * 0.08 : rec == &quot;بيع&quot; ? math.max(boxHi, swingHi) + atrN * 0.08 : na
+tp1Live = rec == &quot;شراء&quot; or rec == &quot;بيع&quot; ? boxMid : na
+tp2Live = rec == &quot;شراء&quot; ? boxHi : rec == &quot;بيع&quot; ? boxLo : na
+var float slFr = na
+var float tp1Fr = na
+var float tp2Fr = na
+if mxLive
+    if na(slFr) and not na(slLive)
+        slFr := slLive
+        tp1Fr := tp1Live
+        tp2Fr := tp2Live
+else
+    slFr := na
+    tp1Fr := na
+    tp2Fr := na
+slP = mxLive ? slFr : slLive
+tp1 = mxLive ? tp1Fr : tp1Live
+tp2 = mxLive ? tp2Fr : tp2Live
 tpP = tp2
 lvTxt = hasTrade and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | نصف &quot; + str.tostring(tp1, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tp2, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = hasTrade ? rec == &quot;شراء&quot; ? color.lime : color.red : color.gray
@@ -832,8 +847,8 @@ enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and not 
 hiStr = str.tostring(boxHi, &quot;#.##&quot;)
 loStr = str.tostring(boxLo, &quot;#.##&quot;)
 emaStr = str.tostring(emaFast, &quot;#.##&quot;)
-unstLong = mxLiveLong and (close &lt; boxLo or (close &lt; boxHi and high[1] &gt;= boxHi) or (close &lt; emaFast and close &lt; boxMid and ema5Dn))
-unstShort = mxLiveShort and (close &gt; boxHi or (close &gt; boxLo and low[1] &lt;= boxLo) or (close &gt; emaFast and close &gt; boxMid and ema5Up))
+unstLong = mxLiveLong and not na(slFr) and close &lt; slFr
+unstShort = mxLiveShort and not na(slFr) and close &gt; slFr
 
 enterTxt = &quot;لا تدخل&quot;
 enterCol = color.gray
@@ -1133,7 +1148,13 @@ if hasTrade and not na(slP)
     lvTxt := &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) + (mxOpen ? (slHitsLiq ? &quot; | الوقف يصفّيك&quot; : &quot; | الوقف قبل التصفية&quot;) : &quot;&quot;)
     if slHitsLiq
         lvCol := color.orange
-lockNow = mxOpen and mxPnl &gt; 0 and (math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.35, mxEntry * 0.0025) or (mxSide == &quot;شراء&quot; and mxMark &gt;= boxMid) or (mxSide == &quot;بيع&quot; and mxMark &lt;= boxMid))
+lockNow = mxOpen and mxPnl &gt; 0 and (math.abs(mxMark - mxEntry) &gt;= math.max(atrN * 0.35, mxEntry * 0.0025) or (mxLong and mxMark &gt;= nz(tp1, boxMid)) or (not mxLong and mxMark &lt;= nz(tp1, boxMid)))
+if mxOpen and lockNow
+    if mxLong
+        slFr := math.max(nz(slFr, mxEntry), mxEntry)
+    else
+        slFr := math.min(nz(slFr, mxEntry), mxEntry)
+    slP := slFr
 hardNews = nearestName == &quot;NFP&quot; or nearestName == &quot;FOMC&quot; or nearestName == &quot;FOMC-P&quot; or nearestName == &quot;CPI&quot; or nearestName == &quot;PPI&quot; or nearestName == &quot;PCE&quot; or nearestName == &quot;جاكسون هول&quot; or nearestName == &quot;محضر FOMC&quot;
 newsSoon = nearestLeft &lt;= 60 and nearestLeft &gt; 0 and nearestTs &lt; FAR
 qualityBuy = tfAgreeBuy and not weakVol and (retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1) or reclaimLiqLo or edgeBuy)
@@ -1260,7 +1281,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v2.2&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.3&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
