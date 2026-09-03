@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.3</title>
+<title>نسخ Scalp v2.4</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.3</h1>
+<h1>Scalp v2.4</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.3&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.4&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -650,8 +650,8 @@ pullBuyLive = (runUp or flagUp) and atWaitBuy and (close &gt; open or hammer1 or
 pullSellLive = (runDn or flagDn) and atWaitSell and (close &lt; open or star1 or holdEmaS or holdVwapS) and not dispDn and not stretchedDn
 pullBuy = pullBuyLive and closedOk
 pullSell = pullSellLive and closedOk
-edgeBuyLive = (inRange or tapsLo &gt;= 2) and botZone and close &gt; open and close &gt; boxLo and not dispUp and not stretchedUp
-edgeSellLive = (inRange or tapsHi &gt;= 2) and topZone and close &lt; open and close &lt; boxHi and not dispDn and not stretchedDn
+edgeBuyLive = (inRange or tapsLo &gt;= 2) and botZone and close &gt; open and close &gt; boxLo and not dispUp and not stretchedUp and (htfUp or tf15Up)
+edgeSellLive = (inRange or tapsHi &gt;= 2) and topZone and close &lt; open and close &lt; boxHi and not dispDn and not stretchedDn and not htfUp
 edgeBuy = edgeBuyLive and closedOk
 edgeSell = edgeSellLive and closedOk
 sweepBuyNow = closedOk and ((sweepLo and close &gt; open) or (sweepLiqLo and close &gt; open))
@@ -747,13 +747,13 @@ if sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or edgeBuy or retest
     raw := &quot;شراء&quot;
 else if sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1)
     raw := &quot;بيع&quot;
-else if botZone and not dispDn
+else if botZone and (htfUp or tf15Up) and not dispDn
     raw := &quot;شراء&quot;
-else if topZone and not dispUp
+else if topZone and not htfUp and not dispUp
     raw := &quot;بيع&quot;
 else if runUp and htfUp
     raw := &quot;شراء&quot;
-else if runDn and not htfUp
+else if runDn or not htfUp
     raw := &quot;بيع&quot;
 
 mxLive = mxEntry &gt; 0 and mxCont &gt; 0
@@ -906,14 +906,14 @@ else if enterNowSell
 else if inRange and midZone
     enterTxt := &quot;لا تدخل | وسط الصندوق — انتظر القاع &quot; + loStr + &quot; أو السقف &quot; + hiStr
     enterCol := color.gray
-else if rec == &quot;شراء&quot; and botZone
+else if rec == &quot;شراء&quot; and botZone and (htfUp or tf15Up)
     enterTxt := &quot;عند قاع الصندوق — ادخل بعد إغلاق شمعة صاعدة&quot;
     enterCol := color.yellow
 else if rec == &quot;بيع&quot; and topZone
     enterTxt := &quot;عند سقف الصندوق — ادخل بعد إغلاق شمعة هابطة&quot;
     enterCol := color.yellow
 else if rec == &quot;بيع&quot; and botZone
-    enterTxt := &quot;لا تبيع القاع | الهدف وصل&quot;
+    enterTxt := &quot;لا تشتري الهبوط | انتظر رجوع &quot; + str.tostring(boxMid, &quot;#.##&quot;) + &quot; ثم بيع&quot;
     enterCol := color.orange
 else if rec == &quot;شراء&quot; and topZone
     enterTxt := &quot;لا تشتري القمة | الهدف وصل&quot;
@@ -1281,7 +1281,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v2.3&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.4&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
