@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.4</title>
+<title>نسخ Scalp v2.5</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.4</h1>
+<h1>Scalp v2.5</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.4&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.5&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -753,7 +753,7 @@ else if topZone and not htfUp and not dispUp
     raw := &quot;بيع&quot;
 else if runUp and htfUp
     raw := &quot;شراء&quot;
-else if runDn or not htfUp
+else if runDn and not htfUp
     raw := &quot;بيع&quot;
 
 mxLive = mxEntry &gt; 0 and mxCont &gt; 0
@@ -763,12 +763,29 @@ var string rec = &quot;انتظار&quot;
 var string lastSide = &quot;انتظار&quot;
 var int waitBars = 0
 blockedFlip = false
-if mxLiveLong and raw == &quot;بيع&quot;
+exitRev = false
+htfAgainstLong = not htfUp or (not tf15Up and tfSec &lt;= 300)
+htfAgainstShort = htfUp or (tf15Up and tfSec &lt;= 300)
+if mxLiveLong and (raw == &quot;بيع&quot; or htfAgainstLong or close &lt; mxEntry and ema5Dn)
+    rec := &quot;انتظار&quot;
     blockedFlip := true
-    rec := close &lt; boxLo ? &quot;انتظار&quot; : &quot;شراء&quot;
-else if mxLiveShort and raw == &quot;شراء&quot;
+    exitRev := true
+else if mxLiveShort and (raw == &quot;شراء&quot; or htfAgainstShort or close &gt; mxEntry and ema5Up)
+    rec := &quot;انتظار&quot;
     blockedFlip := true
-    rec := close &gt; boxHi ? &quot;انتظار&quot; : &quot;بيع&quot;
+    exitRev := true
+else if mxLiveLong
+    rec := &quot;شراء&quot;
+else if mxLiveShort
+    rec := &quot;بيع&quot;
+else if rec == &quot;شراء&quot; and htfAgainstLong
+    rec := &quot;انتظار&quot;
+    blockedFlip := true
+    lastSide := &quot;انتظار&quot;
+else if rec == &quot;بيع&quot; and htfAgainstShort
+    rec := &quot;انتظار&quot;
+    blockedFlip := true
+    lastSide := &quot;انتظار&quot;
 else if raw == lastSide or lastSide == &quot;انتظار&quot; or rec == &quot;انتظار&quot;
     rec := raw
 else if raw != &quot;انتظار&quot; and raw != lastSide
@@ -852,7 +869,12 @@ unstShort = mxLiveShort and not na(slFr) and close &gt; slFr
 
 enterTxt = &quot;لا تدخل&quot;
 enterCol = color.gray
-if failNow
+if exitRev
+    enterTxt := &quot;اخرج الآن — الاتجاه انعكس | لا تفتح عكس&quot;
+    enterCol := color.red
+    st := &quot;انعكاس — اخرج&quot;
+    stCol := color.red
+else if failNow
     enterTxt := &quot;اخرج إن دخلت | لم يستقر — لا تعكس&quot;
     enterCol := color.orange
     st := &quot;فشل — لم يستقر&quot;
@@ -1281,7 +1303,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v2.4&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.5&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
