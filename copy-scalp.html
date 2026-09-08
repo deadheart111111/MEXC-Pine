@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.6</title>
+<title>نسخ Scalp v2.7</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.6</h1>
+<h1>Scalp v2.7</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.6&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.7&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -540,6 +540,18 @@ flowLong = close &gt; open and (strongVol or bullImpulse)
 flowShort = close &lt; open and (strongVol or bearImpulse)
 ema5Up = emaFast &gt; emaFast[1]
 ema5Dn = emaFast &lt; emaFast[1]
+momAtr = math.max(nz(atr, close * 0.002), close * 0.0008)
+bodyNow = math.abs(close - open)
+bodyPrev = math.abs(close[1] - open[1])
+mom3 = (close - close[3]) / momAtr
+int upStk = (close &gt; open ? 1 : 0) + (close[1] &gt; open[1] ? 1 : 0) + (close[2] &gt; open[2] ? 1 : 0)
+int dnStk = (close &lt; open ? 1 : 0) + (close[1] &lt; open[1] ? 1 : 0) + (close[2] &lt; open[2] ? 1 : 0)
+accelUp = close &gt; open and bodyNow &gt; bodyPrev * 1.12 and mom3 &gt; 0.20
+accelDn = close &lt; open and bodyNow &gt; bodyPrev * 1.12 and mom3 &lt; -0.20
+momUpLive = mom3 &gt;= 0.55 and upStk &gt;= 2
+momDnLive = mom3 &lt;= -0.55 and dnStk &gt;= 2
+momExhUp = mom3 &gt;= 1.0 and (close &lt; open or bodyNow &lt; bodyPrev * 0.65)
+momExhDn = mom3 &lt;= -1.0 and (close &gt; open or bodyNow &lt; bodyPrev * 0.65)
 
 tfSec = timeframe.in_seconds()
 htfTF = tfSec &lt;= 180 ? &quot;5&quot; : tfSec &lt;= 300 ? &quot;15&quot; : &quot;60&quot;
@@ -562,6 +574,9 @@ bullStr += close &gt; open and close[1] &gt; open[1] ? 1 : 0
 bullStr += high &gt; high[1] and high[1] &gt; high[2] ? 1 : 0
 bullStr += close &gt; emaFast ? 1 : 0
 bullStr += flowLong ? 1 : 0
+bullStr += momUpLive ? 2 : 0
+bullStr += accelUp ? 1 : 0
+bullStr -= momExhUp ? 2 : 0
 bearStr = 0
 bearStr += emaDn ? 1 : 0
 bearStr += not htfUp ? 2 : 0
@@ -573,6 +588,9 @@ bearStr += close &lt; open and close[1] &lt; open[1] ? 1 : 0
 bearStr += low &lt; low[1] and low[1] &lt; low[2] ? 1 : 0
 bearStr += close &lt; emaFast ? 1 : 0
 bearStr += flowShort ? 1 : 0
+bearStr += momDnLive ? 2 : 0
+bearStr += accelDn ? 1 : 0
+bearStr -= momExhDn ? 2 : 0
 strDiff = bullStr - bearStr
 bullLive = strDiff &gt;= 2
 bearLive = strDiff &lt;= -2
@@ -758,8 +776,8 @@ else if runDn
 rngTxt = str.tostring(boxLo, &quot;#.##&quot;) + &quot; – &quot; + str.tostring(boxHi, &quot;#.##&quot;) + &quot; | لمس &quot; + str.tostring(tapsLo) + &quot; تحت / &quot; + str.tostring(tapsHi) + &quot; فوق&quot;
 rngCol = inRange or flagUp or flagDn ? color.orange : runUp ? color.lime : runDn ? color.red : color.gray
 
-candleTxt = hammer1 ? &quot;مطرقة | رفض قاع&quot; : star1 ? &quot;نجم | رفض قمة&quot; : sweepLoC ? &quot;كنس قاع مغلق&quot; : sweepHiC ? &quot;كنس قمة مغلق&quot; : &quot;عادية&quot;
-candleCol = hammer1 or sweepLoC ? color.lime : star1 or sweepHiC ? color.red : color.gray
+candleTxt = momExhUp ? &quot;زخم صعود يضعف — لا تطارد&quot; : momExhDn ? &quot;زخم هبوط يضعف — لا تطارد&quot; : momUpLive and accelUp ? &quot;زخم صاعد يتسارع | &quot; + str.tostring(upStk) + &quot; خضر&quot; : momDnLive and accelDn ? &quot;زخم هابط يتسارع | &quot; + str.tostring(dnStk) + &quot; حمر&quot; : momUpLive ? &quot;زخم صاعد | &quot; + str.tostring(upStk) + &quot; خضر&quot; : momDnLive ? &quot;زخم هابط | &quot; + str.tostring(dnStk) + &quot; حمر&quot; : hammer1 ? &quot;مطرقة | رفض قاع&quot; : star1 ? &quot;نجم | رفض قمة&quot; : math.abs(mom3) &lt; 0.35 ? &quot;زخم ضعيف | تذبذب&quot; : close &gt; open ? &quot;شمعة صاعدة ضعيفة&quot; : close &lt; open ? &quot;شمعة هابطة ضعيفة&quot; : &quot;عادية&quot;
+candleCol = momExhUp or momExhDn ? color.orange : momUpLive ? color.lime : momDnLive ? color.red : hammer1 ? color.lime : star1 ? color.red : color.gray
 
 bigBuy = rvol &gt;= 2.0 and close &gt; open
 bigSell = rvol &gt;= 2.0 and close &lt; open
@@ -792,8 +810,8 @@ var string lastSide = &quot;انتظار&quot;
 var int waitBars = 0
 blockedFlip = false
 exitRev = false
-htfAgainstLong = bearLive
-htfAgainstShort = bullLive
+htfAgainstLong = bearLive or momDnLive
+htfAgainstShort = bullLive or momUpLive
 if mxLiveLong and (raw == &quot;بيع&quot; or htfAgainstLong or close &lt; mxEntry and ema5Dn)
     rec := &quot;انتظار&quot;
     blockedFlip := true
@@ -1331,7 +1349,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v2.6&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.7&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
@@ -1351,7 +1369,7 @@ if showTable and barstate.islast
     table.cell(t, 1, 8, rvolText, bgcolor=bgV, text_color=rvolCol, text_size=sz)
     table.cell(t, 0, 9, &quot;تدفق كبير&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
     table.cell(t, 1, 9, whaleTxt, bgcolor=bgV, text_color=whaleCol, text_size=sz)
-    table.cell(t, 0, 10, &quot;شمعات&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 10, &quot;زخم&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
     table.cell(t, 1, 10, candleTxt, bgcolor=bgV, text_color=candleCol, text_size=sz)
     table.cell(t, 0, 11, &quot;الجلسة&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
     table.cell(t, 1, 11, sessTxt, bgcolor=bgV, text_color=sessCol, text_size=sz)
