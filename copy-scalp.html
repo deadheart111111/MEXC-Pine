@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v2.5</title>
+<title>نسخ Scalp v2.6</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v2.5</h1>
+<h1>Scalp v2.6</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v2.5&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v2.6&quot;, overlay=true, max_lines_count=24, max_labels_count=14, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -551,8 +551,36 @@ tf15Up = request.security(syminfo.tickerid, &quot;15&quot;, ta.ema(close, emaFas
 btcUp = request.security(&quot;BINANCE:BTCUSDT&quot;, &quot;5&quot;, ta.ema(close, 5) &gt; ta.ema(close, 13), barmerge.gaps_off, barmerge.lookahead_off)
 tfAgreeBuy = emaUp and htfUp
 tfAgreeSell = emaDn and not htfUp
-hardBlockBuy = not htfUp and tfSec &lt;= 300
-hardBlockSell = htfUp and tfSec &lt;= 300
+bullStr = 0
+bullStr += emaUp ? 1 : 0
+bullStr += htfUp ? 2 : 0
+bullStr += tf15Up ? 2 : 0
+bullStr += btcUp ? 1 : 0
+bullStr += ema5Up ? 1 : 0
+bullStr += close &gt; close[3] ? 1 : 0
+bullStr += close &gt; open and close[1] &gt; open[1] ? 1 : 0
+bullStr += high &gt; high[1] and high[1] &gt; high[2] ? 1 : 0
+bullStr += close &gt; emaFast ? 1 : 0
+bullStr += flowLong ? 1 : 0
+bearStr = 0
+bearStr += emaDn ? 1 : 0
+bearStr += not htfUp ? 2 : 0
+bearStr += not tf15Up ? 2 : 0
+bearStr += not btcUp ? 1 : 0
+bearStr += ema5Dn ? 1 : 0
+bearStr += close &lt; close[3] ? 1 : 0
+bearStr += close &lt; open and close[1] &lt; open[1] ? 1 : 0
+bearStr += low &lt; low[1] and low[1] &lt; low[2] ? 1 : 0
+bearStr += close &lt; emaFast ? 1 : 0
+bearStr += flowShort ? 1 : 0
+strDiff = bullStr - bearStr
+bullLive = strDiff &gt;= 2
+bearLive = strDiff &lt;= -2
+trendStrong = math.abs(strDiff) &gt;= 4
+powAr = trendStrong ? &quot;قوي&quot; : math.abs(strDiff) &gt;= 2 ? &quot;متوسط&quot; : &quot;ضعيف&quot;
+trendBias = bullLive ? &quot;صعود&quot; : bearLive ? &quot;هبوط&quot; : &quot;متذبذب&quot;
+hardBlockBuy = bearLive and tfSec &lt;= 300
+hardBlockSell = bullLive and tfSec &lt;= 300
 
 rngLen = tfSec &lt;= 180 ? 8 : tfSec &lt;= 300 ? 8 : 6
 atrN = nz(atr, close * 0.002)
@@ -650,8 +678,8 @@ pullBuyLive = (runUp or flagUp) and atWaitBuy and (close &gt; open or hammer1 or
 pullSellLive = (runDn or flagDn) and atWaitSell and (close &lt; open or star1 or holdEmaS or holdVwapS) and not dispDn and not stretchedDn
 pullBuy = pullBuyLive and closedOk
 pullSell = pullSellLive and closedOk
-edgeBuyLive = (inRange or tapsLo &gt;= 2) and botZone and close &gt; open and close &gt; boxLo and not dispUp and not stretchedUp and (htfUp or tf15Up)
-edgeSellLive = (inRange or tapsHi &gt;= 2) and topZone and close &lt; open and close &lt; boxHi and not dispDn and not stretchedDn and not htfUp
+edgeBuyLive = (inRange or tapsLo &gt;= 2) and botZone and close &gt; open and close &gt; boxLo and not dispUp and not stretchedUp and bullLive and not bearLive
+edgeSellLive = (inRange or tapsHi &gt;= 2) and topZone and close &lt; open and close &lt; boxHi and not dispDn and not stretchedDn and bearLive and not bullLive
 edgeBuy = edgeBuyLive and closedOk
 edgeSell = edgeSellLive and closedOk
 sweepBuyNow = closedOk and ((sweepLo and close &gt; open) or (sweepLiqLo and close &gt; open))
@@ -739,21 +767,21 @@ whaleTxt = bigBuy ? &quot;شراء كمية كبيرة&quot; : bigSell ? &quot;�
 whaleCol = bigBuy ? color.lime : bigSell ? color.red : color.gray
 rvolText = bullImpulse and strongVol ? &quot;دفعة + حجم | صعود&quot; : bearImpulse and strongVol ? &quot;دفعة + حجم | هبوط&quot; : strongVol ? (close &gt; open ? &quot;قوي صعود&quot; : &quot;قوي هبوط&quot;) : weakVol ? &quot;ضعيف&quot; : &quot;عادي&quot;
 rvolCol = weakVol ? color.orange : flowLong ? color.lime : flowShort ? color.red : color.gray
-dirTxt = (tfAgreeBuy ? &quot;صعود&quot; : tfAgreeSell ? &quot;هبوط&quot; : &quot;مختلف&quot;) + &quot; &quot; + htfName + (htfTF == &quot;15&quot; or tfSec &gt;= 900 ? &quot;&quot; : &quot; ·15د &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;)) + &quot; ·BTC &quot; + (btcUp ? &quot;ص&quot; : &quot;ه&quot;)
-dirCol = tfAgreeBuy ? color.lime : tfAgreeSell ? color.red : color.orange
+dirTxt = trendBias + &quot; &quot; + powAr + &quot; &quot; + str.tostring(bullStr) + &quot;/&quot; + str.tostring(bearStr) + (htfTF == &quot;15&quot; or tfSec &gt;= 900 ? &quot;&quot; : &quot; ·15د &quot; + (tf15Up ? &quot;ص&quot; : &quot;ه&quot;)) + &quot; ·BTC &quot; + (btcUp ? &quot;ص&quot; : &quot;ه&quot;)
+dirCol = bullLive ? color.lime : bearLive ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
 if sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or edgeBuy or retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1)
     raw := &quot;شراء&quot;
 else if sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1)
     raw := &quot;بيع&quot;
-else if botZone and (htfUp or tf15Up) and not dispDn
+else if botZone and bullLive and not bearLive and not dispDn
     raw := &quot;شراء&quot;
-else if topZone and not htfUp and not dispUp
+else if topZone and bearLive and not bullLive and not dispUp
     raw := &quot;بيع&quot;
-else if runUp and htfUp
+else if runUp and bullLive
     raw := &quot;شراء&quot;
-else if runDn and not htfUp
+else if runDn and bearLive
     raw := &quot;بيع&quot;
 
 mxLive = mxEntry &gt; 0 and mxCont &gt; 0
@@ -764,8 +792,8 @@ var string lastSide = &quot;انتظار&quot;
 var int waitBars = 0
 blockedFlip = false
 exitRev = false
-htfAgainstLong = not htfUp or (not tf15Up and tfSec &lt;= 300)
-htfAgainstShort = htfUp or (tf15Up and tfSec &lt;= 300)
+htfAgainstLong = bearLive
+htfAgainstShort = bullLive
 if mxLiveLong and (raw == &quot;بيع&quot; or htfAgainstLong or close &lt; mxEntry and ema5Dn)
     rec := &quot;انتظار&quot;
     blockedFlip := true
@@ -1303,7 +1331,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v2.5&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v2.6&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
