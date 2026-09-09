@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>نسخ Vol RSI v1.0</title>
+<style>
+body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
+h1{font-size:20px;margin:0 0 12px}
+p{color:#aaa;font-size:14px;margin:0 0 12px}
+button{width:100%;padding:18px;font-size:22px;font-weight:700;border:0;border-radius:14px;background:#1d9bf0;color:#fff}
+button.ok{background:#22c55e}
+textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;border:1px solid #333;border-radius:10px;padding:8px;font-size:11px;box-sizing:border-box}
+</style>
+</head>
+<body>
+<h1>Vol RSI v1.0</h1>
+<p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
+<button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
+<textarea id="c" readonly>//@version=6
+indicator(&quot;MEXC Vol RSI – 3m/5m/15m v1.0&quot;, overlay=true, max_lines_count=12, max_labels_count=8)
+
+rsiLen = input.int(7, &quot;RSI&quot;, minval=5, maxval=14)
+volLen = input.int(20, &quot;متوسط الحجم&quot;)
+showTable = input.bool(true, &quot;إظهار الجدول&quot;)
+showTrade = input.bool(true, &quot;رسم الصفقة&quot;)
+
+grpMx = &quot;صفقة MEXC — انسخ Size(Cont)&quot;
+mxSide   = input.string(&quot;شراء&quot;, &quot;الاتجاه&quot;, options=[&quot;شراء&quot;, &quot;بيع&quot;], group=grpMx)
+mxEntry  = input.float(0.0, &quot;سعر الدخول&quot;, group=grpMx)
+mxCont   = input.int(0, &quot;الكمية Cont&quot;, minval=0, group=grpMx)
+mxLev    = input.float(115.0, &quot;الرافعة&quot;, minval=1, maxval=200, step=1, group=grpMx)
+mxMargin = input.float(0.0, &quot;الهامش USDT&quot;, group=grpMx)
+mxMMR    = input.float(0.4, &quot;هامش الصيانة %&quot;, minval=0.1, step=0.1, group=grpMx)
+mxContSz = input.float(0.1, &quot;1 Cont = ؟ SOL&quot;, minval=0.0001, step=0.01, group=grpMx)
+
+tzAMS = &quot;Europe/Amsterdam&quot;
+tzNY  = &quot;America/New_York&quot;
+h = hour(timenow, tzAMS)
+m = minute(timenow, tzAMS)
+s = second(timenow, tzAMS)
+f_leftStr(ts) =&gt;
+    left = math.max(0, math.floor((ts - timenow) / 1000))
+    str.tostring(math.floor(left / 3600), &quot;00&quot;) + &quot;:&quot; + str.tostring(math.floor((left % 3600) / 60), &quot;00&quot;) + &quot;:&quot; + str.tostring(left % 60, &quot;00&quot;)
+FAR = timestamp(&quot;UTC&quot;, 2030, 1, 1, 0, 0, 0)
+f_tsNY(y, mo, d, th, tm) =&gt; timestamp(tzNY, y, mo, d, th, tm, 0)
+yNY = year(timenow, tzNY)
+moNY = month(timenow, tzNY)
+dmNY = dayofmonth(timenow, tzNY)
+f_firstFri(y, mo) =&gt;
+    t1 = timestamp(tzNY, y, mo, 1, 8, 30, 0)
+    add = (dayofweek.friday - dayofweek(t1, tzNY) + 7) % 7
+    timestamp(tzNY, y, mo, 1 + add, 8, 30, 0)
+nfpThis = f_firstFri(yNY, moNY)
+nfpNext = moNY == 12 ? f_firstFri(yNY + 1, 1) : f_firstFri(yNY, moNY + 1)
+tsNFP = nfpThis &gt; timenow ? nfpThis : nfpNext
+dwNow = dayofweek(timenow, tzNY)
+addThu = (dayofweek.thursday - dwNow + 7) % 7
+tsClaimsTry = timestamp(tzNY, yNY, moNY, dmNY + addThu, 8, 30, 0)
+tsClaims = tsClaimsTry &gt; timenow ? tsClaimsTry : timestamp(tzNY, yNY, moNY, dmNY + addThu + 7, 8, 30, 0)
+c09 = f_tsNY(2026, 9, 11, 8, 30)
+c10 = f_tsNY(2026, 10, 14, 8, 30)
+c11 = f_tsNY(2026, 11, 10, 8, 30)
+c12 = f_tsNY(2026, 12, 10, 8, 30)
+ppiA = f_tsNY(2026, 9, 10, 8, 30)
+ppiB = f_tsNY(2026, 10, 15, 8, 30)
+nearestTs = FAR
+nearestName = &quot;—&quot;
+f_pick(ts, nm) =&gt;
+    ts &gt; timenow and ts &lt; nearestTs ? true : false
+if f_pick(tsClaims, &quot;Claims&quot;)
+    nearestTs := tsClaims
+    nearestName := &quot;Claims&quot;
+if f_pick(tsNFP, &quot;NFP&quot;)
+    nearestTs := tsNFP
+    nearestName := &quot;NFP&quot;
+if f_pick(c09, &quot;CPI&quot;)
+    nearestTs := c09
+    nearestName := &quot;CPI&quot;
+if f_pick(c10, &quot;CPI&quot;)
+    nearestTs := c10
+    nearestName := &quot;CPI&quot;
+if f_pick(c11, &quot;CPI&quot;)
+    nearestTs := c11
+    nearestName := &quot;CPI&quot;
+if f_pick(c12, &quot;CPI&quot;)
+    nearestTs := c12
+    nearestName := &quot;CPI&quot;
+if f_pick(ppiA, &quot;PPI&quot;)
+    nearestTs := ppiA
+    nearestName := &quot;PPI&quot;
+if f_pick(ppiB, &quot;PPI&quot;)
+    nearestTs := ppiB
+    nearestName := &quot;PPI&quot;
+nearestLeft = nearestTs &lt; FAR ? math.max(0, int(math.round((nearestTs - timenow) / 60000.0))) : 99999
+newsSoon = nearestLeft &lt;= 30 and nearestTs &lt; FAR
+hhmmN = nearestTs &lt; FAR ? str.tostring(hour(nearestTs, tzAMS), &quot;00&quot;) + &quot;:&quot; + str.tostring(minute(nearestTs, tzAMS), &quot;00&quot;) : &quot;—&quot;
+newsTxt = nearestTs &lt; FAR ? nearestName + &quot; &quot; + hhmmN + &quot; · &quot; + f_leftStr(nearestTs) : &quot;—&quot;
+newsCol = newsSoon ? color.red : color.green
+
+atr = ta.atr(10)
+atrN = nz(atr, close * 0.002)
+rsi = ta.rsi(close, rsiLen)
+volSma = ta.sma(volume, volLen)
+rvol = nz(volume / volSma, 1.0)
+buyVol = close &gt; open and rvol &gt;= 1.15
+sellVol = close &lt; open and rvol &gt;= 1.15
+climax = rvol &gt;= 2.2 and math.abs(close - open) &gt;= atrN * 0.70
+weakVol = rvol &lt; 0.80
+rsiUp = rsi &gt; rsi[1]
+rsiDn = rsi &lt; rsi[1]
+oversold = rsi &lt;= 35
+overbought = rsi &gt;= 65
+rsiMidUp = rsi &gt; 45 and rsi &lt; 62 and rsiUp
+rsiMidDn = rsi &lt; 55 and rsi &gt; 38 and rsiDn
+
+rsi5 = request.security(syminfo.tickerid, &quot;5&quot;, ta.rsi(close, rsiLen), barmerge.gaps_off, barmerge.lookahead_off)
+rsi15 = request.security(syminfo.tickerid, &quot;15&quot;, ta.rsi(close, rsiLen), barmerge.gaps_off, barmerge.lookahead_off)
+vol5 = request.security(syminfo.tickerid, &quot;5&quot;, volume &gt; ta.sma(volume, volLen) * 1.10 and close &gt; open, barmerge.gaps_off, barmerge.lookahead_off)
+vol5s = request.security(syminfo.tickerid, &quot;5&quot;, volume &gt; ta.sma(volume, volLen) * 1.10 and close &lt; open, barmerge.gaps_off, barmerge.lookahead_off)
+
+up15 = rsi15 &gt;= 48 and rsi15 &gt;= rsi15[1]
+dn15 = rsi15 &lt;= 52 and rsi15 &lt;= rsi15[1]
+up5 = rsi5 &gt;= 45
+dn5 = rsi5 &lt;= 55
+
+closedOk = barstate.isconfirmed
+liveBuy = not dn15 and buyVol and not climax and not overbought and (oversold and rsiUp or rsiMidUp and rsi5 &gt;= 42)
+liveSell = not up15 and sellVol and not climax and not oversold and (overbought and rsiDn or rsiMidDn and rsi5 &lt;= 58)
+enterBuy = liveBuy and closedOk
+enterSell = liveSell and closedOk
+
+var string rec = &quot;انتظار&quot;
+if enterBuy
+    rec := &quot;شراء&quot;
+else if enterSell
+    rec := &quot;بيع&quot;
+else if rec == &quot;شراء&quot; and (dn15 or rsi &lt; 40 and rsiDn and sellVol or close &lt; ta.lowest(low[1], 3))
+    rec := &quot;انتظار&quot;
+else if rec == &quot;بيع&quot; and (up15 or rsi &gt; 60 and rsiUp and buyVol or close &gt; ta.highest(high[1], 3))
+    rec := &quot;انتظار&quot;
+else if rec == &quot;شراء&quot; and overbought and climax
+    rec := &quot;انتظار&quot;
+else if rec == &quot;بيع&quot; and oversold and climax
+    rec := &quot;انتظار&quot;
+
+mxLive = mxEntry &gt; 0 and mxCont &gt; 0
+mxLiveLong = mxLive and mxSide == &quot;شراء&quot;
+mxLiveShort = mxLive and mxSide == &quot;بيع&quot;
+exitRev = mxLiveLong and (enterSell or dn15 and rsiDn) or mxLiveShort and (enterBuy or up15 and rsiUp)
+
+swingLo = ta.lowest(low, 3)
+swingHi = ta.highest(high, 3)
+slLive = rec == &quot;شراء&quot; ? swingLo - atrN * 0.10 : rec == &quot;بيع&quot; ? swingHi + atrN * 0.10 : na
+tpLive = rec == &quot;شراء&quot; ? close + math.max(close - nz(slLive, close), atrN) * 1.4 : rec == &quot;بيع&quot; ? close - math.max(nz(slLive, close) - close, atrN) * 1.4 : na
+var float slFr = na
+var float tpFr = na
+if mxLive
+    if na(slFr) and not na(slLive)
+        slFr := slLive
+        tpFr := tpLive
+else
+    slFr := na
+    tpFr := na
+slP = mxLive ? slFr : slLive
+tpP = mxLive ? tpFr : tpLive
+slTooFar = rec != &quot;انتظار&quot; and not na(slP) and close &gt; 0 and math.abs(close - slP) / close &gt; 0.70 / mxLev
+
+enterNowBuy = rec == &quot;شراء&quot; and enterBuy and not mxLive and not slTooFar
+enterNowSell = rec == &quot;بيع&quot; and enterSell and not mxLive and not slTooFar
+
+buyWait = str.tostring(close, &quot;#.##&quot;)
+enterTxt = &quot;لا تدخل&quot;
+enterCol = color.gray
+if exitRev
+    enterTxt := &quot;اخرج الآن&quot;
+    enterCol := color.red
+else if mxLive
+    enterTxt := &quot;صفقتك قائمة&quot;
+    enterCol := mxLiveLong ? color.lime : color.red
+else if newsSoon and not enterNowBuy and not enterNowSell
+    enterTxt := &quot;لا تدخل | خبر قريب&quot;
+    enterCol := color.red
+else if climax
+    enterTxt := &quot;لا تطارد | حجم ذروة&quot;
+    enterCol := color.orange
+else if enterNowBuy
+    enterTxt := &quot;ادخل شراء &quot; + buyWait
+    enterCol := color.lime
+else if enterNowSell
+    enterTxt := &quot;ادخل بيع &quot; + buyWait
+    enterCol := color.red
+else if liveBuy
+    enterTxt := &quot;شراء &quot; + buyWait
+    enterCol := color.yellow
+else if liveSell
+    enterTxt := &quot;بيع &quot; + buyWait
+    enterCol := color.yellow
+else if up15 and sellVol
+    enterTxt := &quot;لا تبيع | صعود 15د&quot;
+    enterCol := color.orange
+else if dn15 and buyVol
+    enterTxt := &quot;لا تشتري | هبوط 15د&quot;
+    enterCol := color.orange
+else if up15
+    enterTxt := &quot;صعود 15د | انتظر حجم شراء&quot;
+    enterCol := color.yellow
+else if dn15
+    enterTxt := &quot;هبوط 15د | انتظر حجم بيع&quot;
+    enterCol := color.yellow
+
+rsiTxt = str.tostring(rsi, &quot;#.#&quot;) + &quot; | 5د &quot; + str.tostring(rsi5, &quot;#.#&quot;) + &quot; | 15د &quot; + str.tostring(rsi15, &quot;#.#&quot;)
+rsiCol = oversold ? color.lime : overbought ? color.red : rsiUp ? color.lime : rsiDn ? color.red : color.gray
+volTxt = climax ? &quot;ذروة&quot; : buyVol ? &quot;شراء &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot; : sellVol ? &quot;بيع &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot; : weakVol ? &quot;ضعيف&quot; : &quot;عادي &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot;
+volCol = climax ? color.orange : buyVol ? color.lime : sellVol ? color.red : color.gray
+dirTxt = up15 and not dn15 ? &quot;صعود 15د&quot; : dn15 and not up15 ? &quot;هبوط 15د&quot; : &quot;متذبذب&quot;
+dirCol = up15 and not dn15 ? color.lime : dn15 and not up15 ? color.red : color.gray
+lvTxt = rec != &quot;انتظار&quot; and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
+lvCol = rec == &quot;شراء&quot; ? color.lime : rec == &quot;بيع&quot; ? color.red : color.gray
+
+mxQtyUse = mxCont * mxContSz
+mxOpen = mxEntry &gt; 0 and mxCont &gt; 0 and mxMargin &gt; 0 and mxLev &gt;= 1
+mxLong = mxSide == &quot;شراء&quot;
+mxMark = math.round(close * 100.0) / 100.0
+mxPnl = mxOpen ? (mxLong ? (mxMark - mxEntry) : (mxEntry - mxMark)) * mxQtyUse : 0.0
+mxMmr = mxMMR / 100.0
+mxNotional = mxQtyUse * mxEntry
+mxQtyBad = mxOpen and mxNotional &gt; 0 and mxMargin &gt; mxNotional
+mxIMR = mxOpen and mxNotional &gt; 0 ? math.min(mxMargin / mxNotional, 0.90) : 1.0 / mxLev
+mxLiq = mxOpen and not mxQtyBad ? (mxLong ? mxEntry * (1.0 - mxIMR + mxMmr) : mxEntry * (1.0 + mxIMR - mxMmr)) : na
+mxSideTxt = mxOpen ? ((mxLong ? &quot;لونج &quot; : &quot;شورت &quot;) + str.tostring(mxLev, &quot;#&quot;) + &quot;x&quot;) : &quot;لا صفقة&quot;
+mxPnlLiqTxt = not mxOpen ? &quot;—&quot; : mxQtyBad ? &quot;الكمية غلط&quot; : (mxPnl &gt;= 0 ? &quot;+&quot; : &quot;&quot;) + str.tostring(mxPnl, &quot;#.##&quot;) + &quot; | تصفية &quot; + (na(mxLiq) ? &quot;—&quot; : str.tostring(mxLiq, &quot;#.##&quot;))
+mxPnlCol = not mxOpen ? color.gray : mxPnl &gt; 0 ? color.lime : mxPnl &lt; 0 ? color.red : color.gray
+mxSideCol = not mxOpen ? color.gray : mxLong ? color.lime : color.red
+if mxOpen and mxPnl &gt; 0 and math.abs(mxMark - mxEntry) &gt;= atrN * 0.35
+    slFr := mxLong ? math.max(nz(slFr, mxEntry), mxEntry) : math.min(nz(slFr, mxEntry), mxEntry)
+    slP := slFr
+    enterTxt := &quot;اقفل نصف | حرّك الوقف&quot;
+
+var line lnEn = na
+var line lnSl = na
+var line lnTp = na
+var label lbEn = na
+var label lbSl = na
+var label lbTp = na
+drawTrade = showTrade and rec != &quot;انتظار&quot; and not na(slP) and not na(tpP) and (rec == &quot;شراء&quot; ? slP &lt; close : slP &gt; close)
+enPx = mxOpen ? mxEntry : close
+if barstate.islast
+    if not na(lnEn)
+        line.delete(lnEn)
+    if not na(lnSl)
+        line.delete(lnSl)
+    if not na(lnTp)
+        line.delete(lnTp)
+    if not na(lbEn)
+        label.delete(lbEn)
+    if not na(lbSl)
+        label.delete(lbSl)
+    if not na(lbTp)
+        label.delete(lbTp)
+    if drawTrade
+        lnEn := line.new(bar_index - 2, enPx, bar_index + 8, enPx, color=color.aqua, width=2)
+        lnSl := line.new(bar_index - 2, slP, bar_index + 8, slP, color=color.red, width=2)
+        lnTp := line.new(bar_index - 2, tpP, bar_index + 8, tpP, color=color.lime, width=2)
+        lbEn := label.new(bar_index + 8, enPx, &quot;دخول &quot; + str.tostring(enPx, &quot;#.##&quot;), color=color.aqua, textcolor=color.black, style=label.style_label_left, size=size.small)
+        lbSl := label.new(bar_index + 8, slP, &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;), color=color.red, textcolor=color.white, style=label.style_label_left, size=size.small)
+        lbTp := label.new(bar_index + 8, tpP, &quot;هدف &quot; + str.tostring(tpP, &quot;#.##&quot;), color=color.lime, textcolor=color.black, style=label.style_label_left, size=size.small)
+
+sz = size.tiny
+var table t = table.new(position.top_left, 2, 10, bgcolor=color.new(#111111, 0), border_width=1, border_color=color.new(#444444, 0))
+if showTable and barstate.islast
+    bgL = color.new(#2c2c2c, 0)
+    bgV = color.new(#111111, 0)
+    table.clear(t, 0, 0, 1, 9)
+    table.cell(t, 0, 0, &quot;Vol RSI v1.0&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
+    table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 1, enterTxt, bgcolor=enterCol, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 2, &quot;الاتجاه&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 2, dirTxt, bgcolor=bgV, text_color=dirCol, text_size=sz)
+    table.cell(t, 0, 3, &quot;RSI&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 3, rsiTxt, bgcolor=bgV, text_color=rsiCol, text_size=sz)
+    table.cell(t, 0, 4, &quot;الحجم&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 4, volTxt, bgcolor=bgV, text_color=volCol, text_size=sz)
+    table.cell(t, 0, 5, &quot;وقف / هدف&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 5, lvTxt, bgcolor=bgV, text_color=lvCol, text_size=sz)
+    table.cell(t, 0, 6, &quot;صفقة&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 6, mxSideTxt, bgcolor=bgV, text_color=mxSideCol, text_size=sz)
+    table.cell(t, 0, 7, &quot;الربح&quot;, bgcolor=bgL, text_color=color.white, text_size=sz)
+    table.cell(t, 1, 7, mxPnlLiqTxt, bgcolor=bgV, text_color=mxPnlCol, text_size=sz)
+    table.cell(t, 0, 8, &quot;خبر&quot;, bgcolor=color.new(#37474F, 0), text_color=color.white, text_size=sz)
+    table.cell(t, 1, 8, newsTxt, bgcolor=color.new(#37474F, 0), text_color=newsCol, text_size=sz)
+
+alertcondition(enterNowBuy, &quot;شراء&quot;, &quot;Vol RSI شراء&quot;)
+alertcondition(enterNowSell, &quot;بيع&quot;, &quot;Vol RSI بيع&quot;)
+alertcondition(exitRev, &quot;خروج&quot;, &quot;Vol RSI اخرج&quot;)
+alertcondition(newsSoon and not newsSoon[1], &quot;خبر&quot;, &quot;خبر قريب&quot;)
+</textarea>
+<script>
+function copyMe(){
+  const t=document.getElementById('c');
+  t.focus();
+  t.setSelectionRange(0, t.value.length);
+  const btn=document.getElementById('btn');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t.value).then(()=>{
+      btn.textContent='تم النسخ ✓';
+      btn.className='ok';
+    }).catch(()=>{
+      btn.textContent='محدد — اضغط نسخ من القائمة';
+    });
+  } else {
+    btn.textContent='محدد — اضغط نسخ من القائمة';
+  }
+}
+</script>
+</body>
+</html>
