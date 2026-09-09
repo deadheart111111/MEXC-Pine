@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Vol RSI v1.0</title>
+<title>نسخ Vol RSI v1.1</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,14 +14,14 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Vol RSI v1.0</h1>
+<h1>Vol RSI v1.1</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Vol RSI – 3m/5m/15m v1.0&quot;, overlay=true, max_lines_count=12, max_labels_count=8)
+indicator(&quot;MEXC Vol RSI – 3m/5m/15m v1.1&quot;, overlay=true, max_lines_count=12, max_labels_count=8)
 
-rsiLen = input.int(7, &quot;RSI&quot;, minval=5, maxval=14)
-volLen = input.int(20, &quot;متوسط الحجم&quot;)
+rsiLen = input.int(5, &quot;RSI&quot;, minval=3, maxval=14)
+volLen = input.int(10, &quot;متوسط الحجم&quot;)
 showTable = input.bool(true, &quot;إظهار الجدول&quot;)
 showTrade = input.bool(true, &quot;رسم الصفقة&quot;)
 
@@ -103,32 +103,37 @@ atrN = nz(atr, close * 0.002)
 rsi = ta.rsi(close, rsiLen)
 volSma = ta.sma(volume, volLen)
 rvol = nz(volume / volSma, 1.0)
-buyVol = close &gt; open and rvol &gt;= 1.15
-sellVol = close &lt; open and rvol &gt;= 1.15
-climax = rvol &gt;= 2.2 and math.abs(close - open) &gt;= atrN * 0.70
-weakVol = rvol &lt; 0.80
+buyVol = close &gt; open and (rvol &gt;= 0.90 or volume &gt; volume[1])
+sellVol = close &lt; open and (rvol &gt;= 0.90 or volume &gt; volume[1])
+climax = rvol &gt;= 2.4 and math.abs(close - open) &gt;= atrN * 0.80
+weakVol = rvol &lt; 0.70
 rsiUp = rsi &gt; rsi[1]
 rsiDn = rsi &lt; rsi[1]
-oversold = rsi &lt;= 35
-overbought = rsi &gt;= 65
-rsiMidUp = rsi &gt; 45 and rsi &lt; 62 and rsiUp
-rsiMidDn = rsi &lt; 55 and rsi &gt; 38 and rsiDn
+rsiTurnUp = rsi &gt; rsi[1] and rsi[1] &lt;= rsi[2]
+rsiTurnDn = rsi &lt; rsi[1] and rsi[1] &gt;= rsi[2]
+oversold = rsi &lt;= 42
+overbought = rsi &gt;= 58
 
 rsi5 = request.security(syminfo.tickerid, &quot;5&quot;, ta.rsi(close, rsiLen), barmerge.gaps_off, barmerge.lookahead_off)
 rsi15 = request.security(syminfo.tickerid, &quot;15&quot;, ta.rsi(close, rsiLen), barmerge.gaps_off, barmerge.lookahead_off)
 vol5 = request.security(syminfo.tickerid, &quot;5&quot;, volume &gt; ta.sma(volume, volLen) * 1.10 and close &gt; open, barmerge.gaps_off, barmerge.lookahead_off)
 vol5s = request.security(syminfo.tickerid, &quot;5&quot;, volume &gt; ta.sma(volume, volLen) * 1.10 and close &lt; open, barmerge.gaps_off, barmerge.lookahead_off)
 
-up15 = rsi15 &gt;= 48 and rsi15 &gt;= rsi15[1]
-dn15 = rsi15 &lt;= 52 and rsi15 &lt;= rsi15[1]
-up5 = rsi5 &gt;= 45
-dn5 = rsi5 &lt;= 55
+up15 = rsi15 &gt;= 55
+dn15 = rsi15 &lt;= 45
+range15 = rsi15 &gt; 45 and rsi15 &lt; 55
+up5 = rsi5 &gt;= 48
+dn5 = rsi5 &lt;= 52
+buyOK = not dn15
+sellOK = not up15
 
 closedOk = barstate.isconfirmed
-liveBuy = not dn15 and buyVol and not climax and not overbought and (oversold and rsiUp or rsiMidUp and rsi5 &gt;= 42)
-liveSell = not up15 and sellVol and not climax and not oversold and (overbought and rsiDn or rsiMidDn and rsi5 &lt;= 58)
-enterBuy = liveBuy and closedOk
-enterSell = liveSell and closedOk
+liveBuy = buyOK and buyVol and not climax and rsi &lt; 68 and (rsiTurnUp or oversold and rsiUp or up15 and rsiUp and rsi &lt; 62)
+liveSell = sellOK and sellVol and not climax and rsi &gt; 32 and (rsiTurnDn or overbought and rsiDn or dn15 and rsiDn and rsi &gt; 38)
+hotBuy = liveBuy and (rvol &gt;= 1.05 or closedOk)
+hotSell = liveSell and (rvol &gt;= 1.05 or closedOk)
+enterBuy = hotBuy
+enterSell = hotSell
 
 var string rec = &quot;انتظار&quot;
 if enterBuy
@@ -213,8 +218,8 @@ rsiTxt = str.tostring(rsi, &quot;#.#&quot;) + &quot; | 5د &quot; + str.tostring
 rsiCol = oversold ? color.lime : overbought ? color.red : rsiUp ? color.lime : rsiDn ? color.red : color.gray
 volTxt = climax ? &quot;ذروة&quot; : buyVol ? &quot;شراء &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot; : sellVol ? &quot;بيع &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot; : weakVol ? &quot;ضعيف&quot; : &quot;عادي &quot; + str.tostring(rvol, &quot;#.#&quot;) + &quot;x&quot;
 volCol = climax ? color.orange : buyVol ? color.lime : sellVol ? color.red : color.gray
-dirTxt = up15 and not dn15 ? &quot;صعود 15د&quot; : dn15 and not up15 ? &quot;هبوط 15د&quot; : &quot;متذبذب&quot;
-dirCol = up15 and not dn15 ? color.lime : dn15 and not up15 ? color.red : color.gray
+dirTxt = up15 ? &quot;صعود 15د — شراء فقط&quot; : dn15 ? &quot;هبوط 15د — بيع فقط&quot; : &quot;نطاق 15د — شراء وبيع&quot;
+dirCol = up15 ? color.lime : dn15 ? color.red : color.orange
 lvTxt = rec != &quot;انتظار&quot; and not na(slP) ? &quot;وقف &quot; + str.tostring(slP, &quot;#.##&quot;) + &quot; | هدف &quot; + str.tostring(tpP, &quot;#.##&quot;) : &quot;—&quot;
 lvCol = rec == &quot;شراء&quot; ? color.lime : rec == &quot;بيع&quot; ? color.red : color.gray
 
@@ -272,7 +277,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 9)
-    table.cell(t, 0, 0, &quot;Vol RSI v1.0&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Vol RSI v1.1&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, enterTxt, bgcolor=enterCol, text_color=color.white, text_size=sz)
