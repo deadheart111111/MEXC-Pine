@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>نسخ Scalp v3.0</title>
+<title>نسخ Scalp v3.1</title>
 <style>
 body{margin:0;padding:16px;background:#0b0b0b;color:#fff;font-family:-apple-system,sans-serif}
 h1{font-size:20px;margin:0 0 12px}
@@ -14,11 +14,11 @@ textarea{width:100%;height:58vh;margin-top:12px;background:#161616;color:#ddd;bo
 </style>
 </head>
 <body>
-<h1>Scalp v3.0</h1>
+<h1>Scalp v3.1</h1>
 <p>اضغط الزر الأزرق — ينحدد الكل. ثم اضغط نسخ من قائمة الآيفون، والصق في Pine Editor.</p>
 <button id="btn" onclick="copyMe()">تحديد الكل للنسخ</button>
 <textarea id="c" readonly>//@version=6
-indicator(&quot;MEXC Scalp – 3m/5m/15m v3.0&quot;, overlay=true, max_lines_count=26, max_labels_count=16, max_boxes_count=4)
+indicator(&quot;MEXC Scalp – 3m/5m/15m v3.1&quot;, overlay=true, max_lines_count=26, max_labels_count=16, max_boxes_count=4)
 
 // سكالب سولانا: نطاق ضيق يتكرر ثم كنس أو كسر. رافعة عالية = لا دخول وسط الصندوق.
 emaFastLen = input.int(5,  &quot;EMA سريع&quot;, minval=3)
@@ -830,13 +830,13 @@ dirTxt = trendBias + &quot; &quot; + powAr + &quot; &quot; + str.tostring(bullSt
 dirCol = bullLive ? color.lime : bearLive ? color.red : color.orange
 
 raw = &quot;انتظار&quot;
-if bncBuy or contBnc or sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or edgeBuy or retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1)
+if not bearLive and (bncBuy or contBnc or sweepBuyNow or reclaimLiqLo or (sweepLiqLoC and hammer1) or edgeBuy or retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1))
     raw := &quot;شراء&quot;
-else if rejSell or contRej or sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1)
+else if not bullLive and (rejSell or contRej or sweepSellNow or reclaimLiqHi or (sweepLiqHiC and star1) or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1))
     raw := &quot;بيع&quot;
-else if botZone and bullLive and not bearLive and not dispDn
+else if botZone and bullLive and not dispDn
     raw := &quot;شراء&quot;
-else if topZone and bearLive and not bullLive and not dispUp
+else if topZone and bearLive and not dispUp
     raw := &quot;بيع&quot;
 else if runUp and bullLive
     raw := &quot;شراء&quot;
@@ -946,8 +946,8 @@ slDistPct = hasTrade and not na(slP) and close &gt; 0 ? math.abs(close - slP) / 
 maxSlPct = 0.70 / mxLev
 slTooFar = slDistPct &gt; maxSlPct
 
-enterNowBuy = rec == &quot;شراء&quot; and not mxLive and not failNow and not slTooFar and (bncBuy or contBnc or sweepBuyNow or edgeBuy or retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
-enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and not slTooFar and (rejSell or contRej or sweepSellNow or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
+enterNowBuy = rec == &quot;شراء&quot; and not mxLive and not failNow and not slTooFar and not bearLive and (bncBuy or contBnc or sweepBuyNow or edgeBuy or retestBuy or pullBuy or reclaimLo or (sweepLoC and hammer1) or reclaimLiqLo or (sweepLiqLoC and hammer1))
+enterNowSell = rec == &quot;بيع&quot; and not mxLive and not failNow and not slTooFar and not bullLive and (rejSell or contRej or sweepSellNow or edgeSell or retestSell or pullSell or reclaimHi or (sweepHiC and star1) or reclaimLiqHi or (sweepLiqHiC and star1))
 hiStr = str.tostring(boxHi, &quot;#.##&quot;)
 loStr = str.tostring(boxLo, &quot;#.##&quot;)
 emaStr = str.tostring(emaFast, &quot;#.##&quot;)
@@ -956,124 +956,68 @@ unstShort = mxLiveShort and not na(slFr) and close &gt; slFr
 
 enterTxt = &quot;لا تدخل&quot;
 enterCol = color.gray
+buyWait = str.tostring(math.min(nz(waitBuyPx, emaFast), nz(brkHold, emaFast)), &quot;#.##&quot;)
+sellWait = str.tostring(math.max(nz(waitSellPx, emaFast), nz(brkHold, emaFast)), &quot;#.##&quot;)
 if exitRev
-    enterTxt := &quot;اخرج الآن — الاتجاه انعكس | لا تفتح عكس&quot;
+    enterTxt := &quot;اخرج الآن&quot;
     enterCol := color.red
     st := &quot;انعكاس — اخرج&quot;
     stCol := color.red
 else if failNow
-    enterTxt := &quot;اخرج إن دخلت | لم يستقر — لا تعكس&quot;
+    enterTxt := &quot;اخرج الآن&quot;
     enterCol := color.orange
-    st := &quot;فشل — لم يستقر&quot;
+    st := &quot;فشل — اخرج&quot;
     stCol := color.orange
 else if mxLive and (unstLong or unstShort)
-    enterTxt := &quot;اخرج | لم يستقر — لا تعكس&quot;
+    enterTxt := &quot;اخرج الآن&quot;
     enterCol := color.orange
 else if mxLive
-    if (mxLiveLong and rec == &quot;بيع&quot;) or (mxLiveShort and rec == &quot;شراء&quot;) or (blockedFlip and rec == &quot;انتظار&quot;)
-        enterTxt := &quot;اخرج فقط — لا تعكس&quot;
-        enterCol := color.orange
-    else
-        enterTxt := &quot;صفقتك قائمة — لا تضيف&quot;
-        enterCol := mxLiveLong ? color.lime : color.red
-else if bncLive and not closedOk
-    enterTxt := &quot;ارتداد من الدعم &quot; + supStr + &quot; — ادخل بعد إغلاق صاعد&quot;
-    enterCol := color.yellow
-else if rejLive and not closedOk
-    enterTxt := &quot;رفض من المقاومة &quot; + resStr + &quot; — ادخل بيع بعد إغلاق هابط&quot;
-    enterCol := color.yellow
-else if contBncLive and not closedOk
-    enterTxt := &quot;رجوع بعد الارتداد — ادخل بعد إغلاق صاعد&quot;
-    enterCol := color.yellow
-else if contRejLive and not closedOk
-    enterTxt := &quot;رجوع بعد الرفض — ادخل بيع بعد إغلاق هابط&quot;
-    enterCol := color.yellow
-else if (sweepLo or sweepLiqLo) and not closedOk
-    enterTxt := &quot;كنس قاع يتشكل — ادخل بعد إغلاق هذه الشمعة&quot;
-    enterCol := color.yellow
-else if (sweepHi or sweepLiqHi) and not closedOk
-    enterTxt := &quot;كنس قمة يتشكل — ادخل بعد إغلاق هذه الشمعة&quot;
-    enterCol := color.yellow
-else if brkUpLive and not closedOk
-    enterTxt := &quot;كسر سقف يتشكل — لا تدخل الآن | بعد الإغلاق انتظر رجوع &quot; + hiStr
-    enterCol := color.yellow
-else if brkDnLive and not closedOk
-    enterTxt := &quot;كسر قاع يتشكل — لا تدخل الآن | بعد الإغلاق انتظر رجوع &quot; + loStr
-    enterCol := color.yellow
-else if retestBuyLive and not closedOk
-    enterTxt := &quot;رجوع للكسر يتشكل — ادخل بعد إغلاق شمعة صاعدة عند &quot; + str.tostring(brkHold, &quot;#.##&quot;)
-    enterCol := color.yellow
-else if retestSellLive and not closedOk
-    enterTxt := &quot;رجوع للكسر يتشكل — ادخل بعد إغلاق شمعة هابطة عند &quot; + str.tostring(brkHold, &quot;#.##&quot;)
-    enterCol := color.yellow
-else if edgeBuyLive and not closedOk
-    enterTxt := &quot;عند قاع الصندوق — ادخل بعد إغلاق شمعة صاعدة&quot;
-    enterCol := color.yellow
-else if edgeSellLive and not closedOk
-    enterTxt := &quot;عند سقف الصندوق — ادخل بعد إغلاق شمعة هابطة&quot;
-    enterCol := color.yellow
-else if pullBuyLive and not closedOk
-    enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق فوق &quot; + emaStr
-    enterCol := color.yellow
-else if pullSellLive and not closedOk
-    enterTxt := &quot;رجوع يتشكل — ادخل بعد إغلاق تحت &quot; + emaStr
-    enterCol := color.yellow
+    enterTxt := &quot;صفقتك قائمة&quot;
+    enterCol := mxLiveLong ? color.lime : color.red
 else if enterNowBuy
-    enterTxt := bncBuy ? &quot;ادخل شراء الآن | ارتداد من الدعم &quot; + supStr : contBnc ? &quot;ادخل شراء الآن | رجوع بعد الارتداد&quot; : &quot;ادخل شراء الآن&quot;
+    enterTxt := &quot;ادخل شراء &quot; + str.tostring(close, &quot;#.##&quot;)
     enterCol := color.lime
 else if enterNowSell
-    enterTxt := rejSell ? &quot;ادخل بيع الآن | رفض من المقاومة &quot; + resStr : contRej ? &quot;ادخل بيع الآن | رجوع بعد الرفض&quot; : &quot;ادخل بيع الآن&quot;
+    enterTxt := &quot;ادخل بيع &quot; + str.tostring(close, &quot;#.##&quot;)
     enterCol := color.red
-else if heldBounce and topZone
-    enterTxt := &quot;فات الارتداد من &quot; + str.tostring(nz(actSup, supPx), &quot;#.##&quot;) + &quot; | لا تشتري هنا | انتظر رجوع &quot; + emaStr
+else if bullLive and (bncLive or contBncLive or pullBuyLive or edgeBuyLive or retestBuyLive or rec == &quot;شراء&quot;)
+    enterTxt := &quot;شراء &quot; + buyWait
+    enterCol := color.yellow
+else if bearLive and (rejLive or contRejLive or pullSellLive or edgeSellLive or retestSellLive or rec == &quot;بيع&quot;)
+    enterTxt := &quot;بيع &quot; + sellWait
+    enterCol := color.yellow
+else if bullLive and close &lt; open
+    enterTxt := &quot;لا تبيع | شراء من &quot; + buyWait
     enterCol := color.orange
-else if heldRej and botZone
-    enterTxt := &quot;فات الرفض من &quot; + str.tostring(nz(actRes, resPx), &quot;#.##&quot;) + &quot; | لا تبيع هنا | انتظر رجوع &quot; + emaStr
+else if bearLive and close &gt; open
+    enterTxt := &quot;لا تشتري | بيع من &quot; + sellWait
+    enterCol := color.orange
+else if bullLive and topZone
+    enterTxt := &quot;لا تشتري القمة | رجوع &quot; + emaStr
+    enterCol := color.orange
+else if bearLive and botZone
+    enterTxt := &quot;لا تبيع القاع | رجوع &quot; + emaStr
     enterCol := color.orange
 else if inRange and midZone
-    enterTxt := &quot;لا تدخل | وسط الصندوق — انتظر القاع &quot; + loStr + &quot; أو السقف &quot; + hiStr
+    enterTxt := &quot;انتظر | وسط الصندوق&quot;
     enterCol := color.gray
-else if rec == &quot;شراء&quot; and botZone and (htfUp or tf15Up)
-    enterTxt := &quot;عند قاع الصندوق — ادخل بعد إغلاق شمعة صاعدة&quot;
-    enterCol := color.yellow
-else if rec == &quot;بيع&quot; and topZone
-    enterTxt := &quot;عند سقف الصندوق — ادخل بعد إغلاق شمعة هابطة&quot;
-    enterCol := color.yellow
-else if rec == &quot;بيع&quot; and botZone
-    enterTxt := &quot;لا تشتري الهبوط | انتظر رجوع &quot; + str.tostring(boxMid, &quot;#.##&quot;) + &quot; ثم بيع&quot;
-    enterCol := color.orange
-else if rec == &quot;شراء&quot; and topZone
-    enterTxt := &quot;لا تشتري القمة | الهدف وصل&quot;
-    enterCol := color.orange
-else if rec == &quot;شراء&quot; and atWaitBuy
-    enterTxt := &quot;الرجوع وصل &quot; + str.tostring(waitBuyPx, &quot;#.##&quot;) + &quot; — ادخل بعد إغلاق شمعة صاعدة&quot;
-    enterCol := color.yellow
-else if rec == &quot;بيع&quot; and atWaitSell
-    enterTxt := &quot;الرجوع وصل &quot; + str.tostring(waitSellPx, &quot;#.##&quot;) + &quot; — ادخل بعد إغلاق شمعة هابطة&quot;
-    enterCol := color.yellow
 else if slTooFar
-    enterTxt := &quot;لا تدخل من هذا السعر | الوقف بعيد&quot;
+    enterTxt := &quot;الوقف بعيد&quot;
     enterCol := color.orange
 else if dispUp or stretchedUp
-    enterTxt := &quot;لا تدخل أثناء الاندفاع | انتظر رجوع &quot; + emaStr
+    enterTxt := &quot;لا تطارد | رجوع &quot; + emaStr
     enterCol := color.orange
 else if dispDn or stretchedDn
-    enterTxt := &quot;لا تدخل أثناء الاندفاع | انتظر رجوع &quot; + emaStr
+    enterTxt := &quot;لا تطارد | رجوع &quot; + emaStr
     enterCol := color.orange
-else if rec == &quot;شراء&quot; and nearLo
-    enterTxt := &quot;انتظر إغلاق شمعة صاعدة عند القاع &quot; + loStr
-    enterCol := color.yellow
-else if rec == &quot;بيع&quot; and nearHi
-    enterTxt := &quot;انتظر إغلاق شمعة هابطة عند القمة &quot; + hiStr
-    enterCol := color.yellow
 else if rec == &quot;شراء&quot;
-    enterTxt := &quot;لا تدخل بعد | انتظر رجوع &quot; + emaStr
+    enterTxt := &quot;شراء &quot; + buyWait
     enterCol := color.yellow
 else if rec == &quot;بيع&quot;
-    enterTxt := &quot;لا تدخل بعد | انتظر رجوع &quot; + emaStr
+    enterTxt := &quot;بيع &quot; + sellWait
     enterCol := color.yellow
 else if blockedFlip
-    enterTxt := &quot;لا تدخل | ممنوع العكس السريع&quot;
+    enterTxt := &quot;انتظر&quot;
     enterCol := color.orange
 else if inRange
     enterTxt := &quot;لا تدخل | وسط النطاق&quot;
@@ -1417,7 +1361,7 @@ if showTable and barstate.islast
     bgL = color.new(#2c2c2c, 0)
     bgV = color.new(#111111, 0)
     table.clear(t, 0, 0, 1, 15)
-    table.cell(t, 0, 0, &quot;Scalp v3.0&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
+    table.cell(t, 0, 0, &quot;Scalp v3.1&quot;, bgcolor=color.blue, text_color=color.white, text_size=sz)
     table.cell(t, 1, 0, &quot;SOL&quot;, bgcolor=color.blue, text_color=color.yellow, text_size=sz)
     table.cell(t, 0, 1, &quot;الدخول&quot;, bgcolor=enterCol, text_color=color.white, text_size=sz)
     table.cell(t, 1, 1, recShow, bgcolor=enterCol, text_color=color.white, text_size=sz)
